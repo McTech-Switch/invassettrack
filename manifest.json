@@ -7,16 +7,19 @@
   "background_color": "#0a0a0f",
   "theme_color": "#0a0a0f",
   "orientation": "portrait",
+  "scope": "/invassettrack/",
   "icons": [
     {
-      "src": "icon.png",
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='48' fill='%230a0a0f'/><rect x='56' y='76' width='24' height='96' fill='%2300e5ff'/><rect x='96' y='64' width='24' height='108' fill='%2300e5ff'/><rect x='136' y='84' width='24' height='88' fill='%2300e5ff'/></svg>",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/svg+xml",
+      "purpose": "any"
     },
     {
-      "src": "icon.png",
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='128' fill='%230a0a0f'/><rect x='150' y='203' width='64' height='256' fill='%2300e5ff'/><rect x='256' y='171' width='64' height='288' fill='%2300e5ff'/><rect x='362' y='224' width='64' height='235' fill='%2300e5ff'/></svg>",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/svg+xml",
+      "purpose": "any"
     }
   ]
 }

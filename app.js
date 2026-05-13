@@ -174,7 +174,7 @@ function renderInventory() {
 
   if (items.length === 0) {
     list.innerHTML = `<div class="empty-state">
-      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 [...]
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2H10a2 2 0 0 0-2 2v2M6 21h12a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2z"/></svg>
       <p>${state.searchQuery ? 'No items match your search.' : 'No items yet.<br/>Add your first item using the + tab.'}</p>
     </div>`;
     return;
@@ -193,7 +193,7 @@ function renderInventory() {
       </div>
       <div class="item-meta">
         ${item.category ? `<span class="item-cat">${esc(item.category)}</span>` : ''}
-        ${item.location ? `<span class="item-tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-[...]
+        ${item.location ? `<span class="item-tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg> ${esc(item.location)}</span>` : ''}
         ${item.barcode ? `<span class="item-tag" style="color:var(--text3)">${esc(item.barcode)}</span>` : ''}
         ${borrowed ? `<span class="item-tag" style="color:var(--accent2)">On Loan</span>` : ''}
         ${low ? `<span class="item-tag" style="color:var(--warn)">⚠ Low Stock</span>` : ''}
@@ -221,7 +221,7 @@ window.showItemDetail = function(id) {
       ${item.supplier ? `<div class="detail-cell full"><div class="label">Supplier</div><div class="value">${esc(item.supplier)}</div></div>` : ''}
       ${item.keywords ? `<div class="detail-cell full"><div class="label">Keywords</div><div class="value">${esc(item.keywords)}</div></div>` : ''}
       ${item.notes ? `<div class="detail-cell full"><div class="label">Notes</div><div class="value">${esc(item.notes)}</div></div>` : ''}
-      ${activeBorrow ? `<div class="detail-cell full" style="border-color:rgba(124,58,237,0.3)"><div class="label" style="color:var(--accent2)">Currently Borrowed By</div><div class="value">${esc[...]
+      ${activeBorrow ? `<div class="detail-cell full" style="border-color:rgba(124,58,237,0.3)"><div class="label" style="color:var(--accent2)">Currently Borrowed By</div><div class="value">${esc(activeBorrow.borrower)}</div></div>` : ''}
     </div>
     <div class="detail-actions">
       <button class="btn-ghost" onclick="editQty('${id}')">Update Qty</button>
@@ -482,7 +482,7 @@ function handleBorrowItemLookup(query) {
     preview.classList.remove('hidden');
     return;
   }
-  preview.innerHTML = `<strong>${esc(item.name)}</strong>${esc(item.location) || ''} · Qty: ${item.qty}`;
+  preview.innerHTML = `<strong>${esc(item.name)}</strong> ${esc(item.location) || ''} · Qty: ${item.qty}`;
   preview.classList.remove('hidden');
   preview.dataset.itemId = item.id;
   preview.dataset.itemName = item.name;
