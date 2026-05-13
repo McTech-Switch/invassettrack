@@ -109,7 +109,7 @@
               <div class="scan-corner br"></div>
               <div class="scan-line"></div>
             </div>
-            <canvas id="scannerCanvas" style="display:none"></canvas>
+            <canvas id="scannerCanvas" style="display:none;position:absolute;top:0;left:0"></canvas>
           </div>
           <button class="btn-primary" id="startScanBtn">Start Camera</button>
           <button class="btn-ghost" id="stopScanBtn" style="display:none">Stop Camera</button>
@@ -192,6 +192,11 @@
               <button class="btn-accent" id="borrowScanBtn" title="Scan">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="8" x2="4" y2="16"/><line x1="8" y1="6" x2="8" y2="18"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="16" y1="6" x2="16" y2="18"/><line x1="20" y1="8" x2="20" y2="16"/></svg>
               </button>
+            </div>
+            <div class="mini-scanner hidden" id="borrowMiniScanner">
+              <video id="borrowVideo" playsinline autoplay muted></video>
+              <canvas id="borrowCanvas" style="display:none;position:absolute;top:0;left:0"></canvas>
+              <button class="btn-ghost sm" id="closeBorrowScanner">Cancel</button>
             </div>
             <div id="borrowItemResult" class="item-preview hidden"></div>
           </div>
