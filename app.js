@@ -25,18 +25,35 @@ const state = {
 // ── LOAD ZXING ────────────────────────────────
 function loadZXing() {
   return new Promise((resolve) => {
+    // Check if already loaded
+    if (typeof ZXing !== 'undefined') {
+      state.zxing = true;
+      console.log('✓ ZXing already loaded');
+      resolve(true);
+      return;
+    }
+
     const script = document.createElement('script');
     script.src = 'https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js';
     script.onload = () => {
-      // Just flag that ZXing is available — we create readers per-scan
       if (typeof ZXing !== 'undefined') {
         state.zxing = true;
+        console.log('✓ ZXing loaded successfully');
         resolve(true);
       } else {
+        console.warn('⚠ ZXing object not found after script load');
         resolve(false);
       }
     };
-    script.onerror = () => resolve(false);
+    script.onerror = (err) => {
+      console.error('✗ Failed to load ZXing:', err);
+      resolve(false);
+    };
+    script.onreadystatechange = () => {
+      if (script.readyState === 'loaded' || script.readyState === 'complete') {
+        script.onload();
+      }
+    };
     document.head.appendChild(script);
   });
 }
@@ -157,7 +174,7 @@ function renderInventory() {
 
   if (items.length === 0) {
     list.innerHTML = `<div class="empty-state">
-      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-4 0v2M8 7V5a2 2 0 0 0-4 0v2"/></svg>
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 [...]
       <p>${state.searchQuery ? 'No items match your search.' : 'No items yet.<br/>Add your first item using the + tab.'}</p>
     </div>`;
     return;
@@ -176,7 +193,7 @@ function renderInventory() {
       </div>
       <div class="item-meta">
         ${item.category ? `<span class="item-cat">${esc(item.category)}</span>` : ''}
-        ${item.location ? `<span class="item-tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5S13.38 11.5 12 11.5z"/></svg>${esc(item.location)}</span>` : ''}
+        ${item.location ? `<span class="item-tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-[...]
         ${item.barcode ? `<span class="item-tag" style="color:var(--text3)">${esc(item.barcode)}</span>` : ''}
         ${borrowed ? `<span class="item-tag" style="color:var(--accent2)">On Loan</span>` : ''}
         ${low ? `<span class="item-tag" style="color:var(--warn)">⚠ Low Stock</span>` : ''}
@@ -204,7 +221,7 @@ window.showItemDetail = function(id) {
       ${item.supplier ? `<div class="detail-cell full"><div class="label">Supplier</div><div class="value">${esc(item.supplier)}</div></div>` : ''}
       ${item.keywords ? `<div class="detail-cell full"><div class="label">Keywords</div><div class="value">${esc(item.keywords)}</div></div>` : ''}
       ${item.notes ? `<div class="detail-cell full"><div class="label">Notes</div><div class="value">${esc(item.notes)}</div></div>` : ''}
-      ${activeBorrow ? `<div class="detail-cell full" style="border-color:rgba(124,58,237,0.3)"><div class="label" style="color:var(--accent2)">Currently Borrowed By</div><div class="value">${esc(activeBorrow.borrower)} — due ${activeBorrow.dueDate || 'no date'}</div></div>` : ''}
+      ${activeBorrow ? `<div class="detail-cell full" style="border-color:rgba(124,58,237,0.3)"><div class="label" style="color:var(--accent2)">Currently Borrowed By</div><div class="value">${esc[...]
     </div>
     <div class="detail-actions">
       <button class="btn-ghost" onclick="editQty('${id}')">Update Qty</button>
@@ -285,18 +302,31 @@ async function startScan(mode) {
   stopScan(mode);
 
   try {
+    console.log(`Starting scan (${mode})...`);
+    
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+      video: { 
+        facingMode: { ideal: 'environment' }, 
+        width: { ideal: 1280 }, 
+        height: { ideal: 720 }
+      }
     });
+
+    console.log(`✓ Camera stream acquired (${mode})`);
 
     videoEl.srcObject = stream;
     videoEl.setAttribute('playsinline', '');
     videoEl.muted = true;
 
     await new Promise((res, rej) => {
-      videoEl.onloadedmetadata = () => videoEl.play().then(res).catch(rej);
-      setTimeout(rej, 8000); // safety timeout
+      const timeout = setTimeout(rej, 8000); // safety timeout
+      videoEl.onloadedmetadata = () => {
+        clearTimeout(timeout);
+        videoEl.play().then(res).catch(rej);
+      };
     });
+
+    console.log(`✓ Video playing (${mode})`);
 
     // Store stream reference
     if (mode === 'main') {
@@ -316,14 +346,18 @@ async function startScan(mode) {
     hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
     reader.hints = hints;
 
+    console.log(`✓ ZXing reader created (${mode})`);
+
     // Canvas polling — grab a frame every 300ms and attempt decode
     const ctx = canvasEl.getContext('2d');
     let active = true;
+    let attemptCount = 0;
 
     async function tick() {
       if (!active) return;
       if (videoEl.readyState < 2) { setTimeout(tick, 300); return; }
 
+      attemptCount++;
       canvasEl.width  = videoEl.videoWidth  || 640;
       canvasEl.height = videoEl.videoHeight || 480;
       ctx.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
@@ -338,6 +372,7 @@ async function startScan(mode) {
         // ── Got a result ──
         active = false;
         const code = result.getText();
+        console.log(`✓ Barcode scanned: ${code} (${mode}) [${attemptCount} attempts]`);
 
         if (mode === 'main') {
           stopScan('main');
@@ -355,7 +390,7 @@ async function startScan(mode) {
           showToast(`Scanned: ${code}`);
         }
 
-      } catch {
+      } catch (err) {
         // No barcode this frame — keep polling
         if (active) setTimeout(tick, 300);
       }
@@ -370,11 +405,13 @@ async function startScan(mode) {
     setTimeout(tick, 500); // small delay to let camera warm up
 
   } catch (err) {
-    console.error('Camera error:', err);
+    console.error(`✗ Camera error (${mode}):`, err);
     if (err.name === 'NotAllowedError') {
-      showToast('Camera denied — go to Settings → Safari → Camera → Allow');
+      showToast('📱 Camera denied — go to Settings → Safari → Camera → Allow');
+    } else if (err.name === 'NotFoundError') {
+      showToast('❌ No camera found on this device');
     } else {
-      showToast('Could not start camera: ' + err.message);
+      showToast('⚠️ Camera error: ' + err.message);
     }
   }
 }
@@ -571,8 +608,14 @@ async function init() {
   }, 1400);
 
   // Load ZXing in background
+  console.log('Loading ZXing library…');
   loadZXing().then(ok => {
-    if (!ok) console.warn('ZXing failed to load — barcode scanning unavailable');
+    if (!ok) {
+      console.warn('⚠ ZXing failed to load — barcode scanning unavailable');
+      showToast('⚠️ Barcode scanner not available');
+    } else {
+      console.log('✓ AssetTrack ready!');
+    }
   });
 
   renderInventory();
