@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0a0f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="AssetTrack" />
+  <link rel="apple-touch-icon" href="icon.png" />
+  <link rel="manifest" href="manifest.json" />
+  <title>AssetTrack</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- SPLASH -->
+  <div id="splash">
+    <div class="splash-inner">
+      <div class="splash-icon">
+        <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
+          <rect width="56" height="56" rx="16" fill="#00e5ff" fill-opacity="0.12"/>
+          <path d="M14 20h4v16h-4zM20 16h4v20h-4zM26 22h4v14h-4zM32 18h4v18h-4zM38 20h4v16h-4z" fill="#00e5ff"/>
+          <rect x="12" y="38" width="32" height="2" rx="1" fill="#00e5ff" fill-opacity="0.4"/>
+        </svg>
+      </div>
+      <h1 class="splash-title">AssetTrack</h1>
+      <p class="splash-sub">Inventory Management</p>
+    </div>
+  </div>
+
+  <!-- APP SHELL -->
+  <div id="app" class="hidden">
+
+    <!-- HEADER -->
+    <header class="app-header">
+      <div class="header-inner">
+        <div class="header-logo">
+          <svg width="24" height="24" viewBox="0 0 56 56" fill="none">
+            <path d="M14 20h4v16h-4zM20 16h4v20h-4zM26 22h4v14h-4zM32 18h4v18h-4zM38 20h4v16h-4z" fill="#00e5ff"/>
+          </svg>
+          <span>AssetTrack</span>
+        </div>
+        <button class="setup-btn" id="setupBtn" title="Settings">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- NAV TABS -->
+    <nav class="tab-bar">
+      <button class="tab active" data-tab="inventory">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+        <span>Inventory</span>
+      </button>
+      <button class="tab" data-tab="scan">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" y1="12" x2="17" y2="12"/></svg>
+        <span>Scan</span>
+      </button>
+      <button class="tab" data-tab="add">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        <span>Add Item</span>
+      </button>
+      <button class="tab" data-tab="borrow">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span>Borrows</span>
+      </button>
+    </nav>
+
+    <!-- PAGES -->
+    <main class="page-container">
+
+      <!-- INVENTORY PAGE -->
+      <section class="page active" id="page-inventory">
+        <div class="search-bar-wrap">
+          <div class="search-bar">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input type="text" id="searchInput" placeholder="Search name, category, location, barcode…" />
+          </div>
+        </div>
+        <div class="filter-chips">
+          <button class="chip active" data-filter="all">All</button>
+          <button class="chip" data-filter="low">⚠ Low Stock</button>
+          <button class="chip" data-filter="borrowed">On Loan</button>
+        </div>
+        <div id="inventoryList" class="item-list">
+          <div class="empty-state">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-4 0v2M8 7V5a2 2 0 0 0-4 0v2"/></svg>
+            <p>No items yet.<br/>Add your first item or load from Google Sheets.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- SCAN PAGE -->
+      <section class="page" id="page-scan">
+        <div class="scan-wrap">
+          <div class="scan-header">
+            <h2>Barcode Scanner</h2>
+            <p>Point camera at a barcode to look up an item</p>
+          </div>
+          <div class="scanner-box" id="scannerBox">
+            <video id="scannerVideo" playsinline autoplay muted></video>
+            <div class="scan-overlay">
+              <div class="scan-corner tl"></div>
+              <div class="scan-corner tr"></div>
+              <div class="scan-corner bl"></div>
+              <div class="scan-corner br"></div>
+              <div class="scan-line"></div>
+            </div>
+            <canvas id="scannerCanvas" style="display:none"></canvas>
+          </div>
+          <button class="btn-primary" id="startScanBtn">Start Camera</button>
+          <button class="btn-ghost" id="stopScanBtn" style="display:none">Stop Camera</button>
+          <div id="scanResult" class="scan-result hidden"></div>
+          <div class="manual-lookup">
+            <p>Or enter barcode manually:</p>
+            <div class="input-row">
+              <input type="text" id="manualBarcode" placeholder="Enter barcode number…" />
+              <button class="btn-accent" id="manualLookupBtn">Look Up</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ADD ITEM PAGE -->
+      <section class="page" id="page-add">
+        <div class="form-wrap">
+          <h2>Add New Item</h2>
+          <div class="form-group">
+            <label>Item Name *</label>
+            <input type="text" id="f-name" placeholder="e.g. HDMI Cable" />
+          </div>
+          <div class="form-group">
+            <label>Barcode</label>
+            <div class="input-row">
+              <input type="text" id="f-barcode" placeholder="e.g. 9312345678901" />
+              <button class="btn-accent" id="scanBarcodeBtn" title="Scan barcode">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="8" x2="4" y2="16"/><line x1="8" y1="6" x2="8" y2="18"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="16" y1="6" x2="16" y2="18"/><line x1="20" y1="8" x2="20" y2="16"/></svg>
+              </button>
+            </div>
+            <div class="mini-scanner hidden" id="miniScanner">
+              <video id="miniVideo" playsinline autoplay muted></video>
+              <canvas id="miniCanvas" style="display:none"></canvas>
+              <button class="btn-ghost sm" id="closeMiniScanner">Cancel</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Category</label>
+            <input type="text" id="f-category" placeholder="e.g. Electronics" />
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Quantity *</label>
+              <input type="number" id="f-qty" placeholder="0" min="0" />
+            </div>
+            <div class="form-group">
+              <label>Min Stock</label>
+              <input type="number" id="f-minstock" placeholder="0" min="0" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Storage Location</label>
+            <input type="text" id="f-location" placeholder="e.g. IT Room Shelf B2" />
+          </div>
+          <div class="form-group">
+            <label>Keywords / Tags</label>
+            <input type="text" id="f-keywords" placeholder="e.g. cable, monitor, display" />
+          </div>
+          <div class="form-group">
+            <label>Supplier</label>
+            <input type="text" id="f-supplier" placeholder="e.g. Tech Supplier Pty Ltd" />
+          </div>
+          <div class="form-group">
+            <label>Notes</label>
+            <textarea id="f-notes" placeholder="e.g. 2 metres long, black"></textarea>
+          </div>
+          <button class="btn-primary full" id="saveItemBtn">Save Item</button>
+          <div id="saveStatus" class="save-status hidden"></div>
+        </div>
+      </section>
+
+      <!-- BORROW PAGE -->
+      <section class="page" id="page-borrow">
+        <div class="form-wrap">
+          <h2>Borrow / Return</h2>
+          <div class="form-group">
+            <label>Item Barcode or Name</label>
+            <div class="input-row">
+              <input type="text" id="b-item" placeholder="Search or scan item…" />
+              <button class="btn-accent" id="borrowScanBtn" title="Scan">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="8" x2="4" y2="16"/><line x1="8" y1="6" x2="8" y2="18"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="16" y1="6" x2="16" y2="18"/><line x1="20" y1="8" x2="20" y2="16"/></svg>
+              </button>
+            </div>
+            <div id="borrowItemResult" class="item-preview hidden"></div>
+          </div>
+          <div class="form-group">
+            <label>Borrower Name *</label>
+            <input type="text" id="b-name" placeholder="e.g. John Smith" />
+          </div>
+          <div class="form-group">
+            <label>Expected Return Date</label>
+            <input type="date" id="b-date" />
+          </div>
+          <div class="btn-group">
+            <button class="btn-primary" id="borrowBtn">Record Borrow</button>
+            <button class="btn-outline" id="returnBtn">Record Return</button>
+          </div>
+          <div id="borrowStatus" class="save-status hidden"></div>
+
+          <h3 class="section-label">Active Borrows</h3>
+          <div id="borrowList" class="item-list compact"></div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ITEM DETAIL MODAL -->
+  <div id="itemModal" class="modal hidden">
+    <div class="modal-backdrop" id="modalBackdrop"></div>
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div id="modalContent"></div>
+    </div>
+  </div>
+
+  <!-- SETUP MODAL -->
+  <div id="setupModal" class="modal hidden">
+    <div class="modal-backdrop" id="setupBackdrop"></div>
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="form-wrap">
+        <h2>Google Sheets Setup</h2>
+        <p class="setup-info">Connect to Google Sheets to sync your inventory across devices. <a href="SETUP.md" target="_blank">See setup guide →</a></p>
+        <div class="form-group">
+          <label>Web App URL (from Apps Script)</label>
+          <input type="url" id="sheetsUrl" placeholder="https://script.google.com/macros/s/…/exec" />
+        </div>
+        <button class="btn-primary full" id="saveSetupBtn">Save & Connect</button>
+        <button class="btn-ghost full" id="testConnectionBtn">Test Connection</button>
+        <div id="setupStatus" class="save-status hidden"></div>
+        <div class="setup-divider">
+          <span>Data Storage</span>
+        </div>
+        <p class="setup-info">Without Google Sheets, data is saved locally on this device only.</p>
+        <button class="btn-outline full danger" id="clearDataBtn">Clear All Local Data</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
