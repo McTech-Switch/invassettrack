@@ -283,9 +283,8 @@ async function startScan(mode) {
   }
 
   const c = cfg[mode];
-  const videoEl  = document.getElementById(c.video);
-  const canvasEl = document.getElementById(c.canvas);
-  if (!videoEl || !canvasEl) { showToast('Scanner element missing'); return; }
+  const videoEl = document.getElementById(c.video);
+  if (!videoEl) { showToast('Scanner element missing'); return; }
 
   stopScan(mode);
 
@@ -296,23 +295,6 @@ async function startScan(mode) {
       video: { facingMode: { ideal: 'environment' } }
     });
     console.log('✓ Camera stream acquired (' + mode + ')');
-
-    videoEl.srcObject = stream;
-    videoEl.setAttribute('playsinline', 'true');
-    videoEl.muted = true;
-
-    await new Promise((resolve, reject) => {
-      videoEl.onloadedmetadata = () => {
-        console.log('✓ Video metadata loaded, playing... (' + mode + ')');
-        videoEl.play().then(() => {
-          console.log('✓ Video playing (' + mode + ')');
-          resolve();
-        }).catch(reject);
-      };
-      setTimeout(() => reject(new Error('Camera timeout')), 10000);
-    });
-
-    setScanStatus('Scanning… hold steady');
 
     if (mode === 'main') {
       state.scanStream = stream;
@@ -326,13 +308,16 @@ async function startScan(mode) {
       document.getElementById(c.miniEl).classList.remove('hidden');
     }
 
-    // Use decodeFromVideoElement with continuous scanning
-    // This is the simplest ZXing API and works on both Chrome and Safari
+    // Point the video element at the stream for display only
+    videoEl.srcObject = stream;
+
+    setScanStatus('Scanning… hold steady');
+
     const reader = new ZXing.BrowserMultiFormatReader();
     console.log('✓ ZXing reader created (' + mode + ')');
 
-    // decodeFromVideoElement fires callback repeatedly while active
-    reader.decodeFromVideoElement(videoEl, (result, err) => {
+    // decodeFromStream lets ZXing manage video playback internally — avoids "already playing" conflict
+    reader.decodeFromStream(stream, videoEl, (result, err) => {
       if (result) {
         const code = result.getText();
         console.log('✓ Barcode decoded: ' + code);
@@ -340,17 +325,11 @@ async function startScan(mode) {
         reader.reset();
         onScanResult(mode, code);
       } else if (err && !(err instanceof ZXing.NotFoundException)) {
-        // Log real errors but not "no barcode found" which fires every frame
-        console.warn('ZXing decode error:', err);
+        console.warn('ZXing error:', err.message || err);
       }
-      // NotFoundException just means no barcode this frame — ignore it
     });
 
-    const stopper = {
-      stop() {
-        try { reader.reset(); } catch {}
-      }
-    };
+    const stopper = { stop() { try { reader.reset(); } catch {} } };
     if (mode === 'main')        state.scanInterval       = stopper;
     else if (mode === 'mini')   state.miniScanInterval   = stopper;
     else                        state.borrowScanInterval = stopper;
