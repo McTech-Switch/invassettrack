@@ -22,14 +22,14 @@ const state = {
   zxing: null,
 };
 
-// ── LOAD ZXING ────────────────────────────────
+// ── LOAD html5-qrcode ─────────────────────────
 function loadZXing() {
   return new Promise((resolve) => {
     const script = document.createElement('script');
-    script.src = 'https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js';
+    script.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
     script.onload = () => {
-      // Just flag that ZXing is available — we create readers per-scan
-      if (typeof ZXing !== 'undefined') {
+      if (typeof Html5Qrcode !== 'undefined') {
+        console.log('✓ html5-qrcode loaded');
         state.zxing = true;
         resolve(true);
       } else {
@@ -262,14 +262,18 @@ function showScanResult(item, containerId) {
 }
 
 // ── CAMERA / SCAN ─────────────────────────────
-// Polls canvas frames and decodes via ZXing BrowserMultiFormatReader.decodeFromImageUrl
-// This approach works on iPhone Safari where the callback API does not.
+// Uses html5-qrcode which handles its own video, camera, and decode loop.
+// Much more reliable than ZXing on iPhone Safari and Chrome.
 
-const cfg = {
-  main:   { video: 'scannerVideo',  canvas: 'scannerCanvas',  startBtn: 'startScanBtn', stopBtn: 'stopScanBtn' },
-  mini:   { video: 'miniVideo',     canvas: 'miniCanvas',     miniEl: 'miniScanner' },
-  borrow: { video: 'borrowVideo',   canvas: 'borrowCanvas',   miniEl: 'borrowMiniScanner' },
+// html5-qrcode needs a real div element as its mount point.
+// We use hidden divs in the HTML for each scan mode.
+const scanDivIds = {
+  main:   'scannerRegion',
+  mini:   'miniScannerRegion',
+  borrow: 'borrowScannerRegion',
 };
+
+const scanners = { main: null, mini: null, borrow: null };
 
 function setScanStatus(msg) {
   const el = document.getElementById('scanStatus');
@@ -282,70 +286,88 @@ async function startScan(mode) {
     return;
   }
 
-  const c = cfg[mode];
-  const videoEl = document.getElementById(c.video);
-  if (!videoEl) { showToast('Scanner element missing'); return; }
+  await stopScan(mode);
 
-  stopScan(mode);
+  const divId = scanDivIds[mode];
+  const regionEl = document.getElementById(divId);
+  if (!regionEl) { showToast('Scanner region missing'); return; }
+
+  // Show the scanner UI
+  regionEl.style.display = 'block';
+  if (mode === 'main') {
+    const s = document.getElementById('startScanBtn'); if (s) s.style.display = 'none';
+    const x = document.getElementById('stopScanBtn');  if (x) x.style.display = 'block';
+    const p = document.getElementById('scannerPlaceholder'); if (p) p.style.display = 'none';
+    setScanStatus('Scanning… hold steady');
+  } else {
+    const miniEl = mode === 'mini' ? 'miniScanner' : 'borrowMiniScanner';
+    const el = document.getElementById(miniEl); if (el) el.classList.remove('hidden');
+  }
 
   try {
-    console.log('Starting scan (' + mode + ')...');
-    setScanStatus('Starting camera…');
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' } }
-    });
-    console.log('✓ Camera stream acquired (' + mode + ')');
+    const scanner = new Html5Qrcode(divId);
+    scanners[mode] = scanner;
 
-    if (mode === 'main') {
-      state.scanStream = stream;
-      const s = document.getElementById(c.startBtn); if (s) s.style.display = 'none';
-      const x = document.getElementById(c.stopBtn);  if (x) x.style.display = 'block';
-    } else if (mode === 'mini') {
-      state.miniScanStream = stream;
-      document.getElementById(c.miniEl).classList.remove('hidden');
-    } else {
-      state.borrowScanStream = stream;
-      document.getElementById(c.miniEl).classList.remove('hidden');
-    }
-
-    // Point the video element at the stream for display only
-    videoEl.srcObject = stream;
-
-    setScanStatus('Scanning… hold steady');
-
-    const reader = new ZXing.BrowserMultiFormatReader();
-    console.log('✓ ZXing reader created (' + mode + ')');
-
-    // decodeFromStream lets ZXing manage video playback internally — avoids "already playing" conflict
-    reader.decodeFromStream(stream, videoEl, (result, err) => {
-      if (result) {
-        const code = result.getText();
-        console.log('✓ Barcode decoded: ' + code);
+    await scanner.start(
+      { facingMode: 'environment' },
+      {
+        fps: 10,
+        qrbox: { width: 250, height: 180 },
+        aspectRatio: 1.0,
+        supportedScanTypes: [
+          Html5QrcodeScanType.SCAN_TYPE_CAMERA
+        ],
+      },
+      (decodedText) => {
+        // Success callback — barcode found
+        console.log('✓ Scanned:', decodedText);
         setScanStatus('✓ Got it!');
-        reader.reset();
-        onScanResult(mode, code);
-      } else if (err && !(err instanceof ZXing.NotFoundException)) {
-        console.warn('ZXing error:', err.message || err);
+        stopScan(mode);
+        onScanResult(mode, decodedText);
+      },
+      (errorMsg) => {
+        // Per-frame error — normal when no barcode in frame, ignore
       }
-    });
-
-    const stopper = { stop() { try { reader.reset(); } catch {} } };
-    if (mode === 'main')        state.scanInterval       = stopper;
-    else if (mode === 'mini')   state.miniScanInterval   = stopper;
-    else                        state.borrowScanInterval = stopper;
+    );
 
   } catch (err) {
     setScanStatus('');
-    if (err.name === 'NotAllowedError') {
-      showToast('Camera blocked — go to Settings → Safari → Camera → Allow');
+    console.error('Scanner error:', err);
+    if (String(err).includes('Permission') || String(err).includes('NotAllowed')) {
+      showToast('Camera blocked — allow camera access in your browser settings');
     } else {
-      showToast('Camera error: ' + (err.message || err));
+      showToast('Camera error: ' + err);
     }
+    await stopScan(mode);
+  }
+}
+
+async function stopScan(mode) {
+  const scanner = scanners[mode];
+  if (scanner) {
+    try {
+      if (scanner.isScanning) await scanner.stop();
+      scanner.clear();
+    } catch {}
+    scanners[mode] = null;
+  }
+
+  const divId = scanDivIds[mode];
+  const regionEl = document.getElementById(divId);
+  if (regionEl) regionEl.style.display = 'none';
+
+  if (mode === 'main') {
+    const s = document.getElementById('startScanBtn'); if (s) s.style.display = 'block';
+    const x = document.getElementById('stopScanBtn');  if (x) x.style.display = 'none';
+    const p = document.getElementById('scannerPlaceholder'); if (p) p.style.display = 'block';
+    setScanStatus('');
+  } else {
+    const miniElId = mode === 'mini' ? 'miniScanner' : 'borrowMiniScanner';
+    const miniEl = document.getElementById(miniElId); if (miniEl) miniEl.classList.add('hidden');
   }
 }
 
 function onScanResult(mode, code) {
-  stopScan(mode);
   if (mode === 'main') {
     showScanResult(lookupBarcode(code), 'scanResult');
     showToast('Scanned: ' + code);
@@ -356,26 +378,6 @@ function onScanResult(mode, code) {
     document.getElementById('b-item').value = code;
     handleBorrowItemLookup(code);
     showToast('Scanned: ' + code);
-  }
-}
-
-function stopScan(mode) {
-  if (mode === 'main') {
-    if (state.scanInterval)   { state.scanInterval.stop();   state.scanInterval   = null; }
-    if (state.scanStream)     { state.scanStream.getTracks().forEach(t => t.stop()); state.scanStream = null; }
-    const v = document.getElementById('scannerVideo'); if (v) v.srcObject = null;
-    const s = document.getElementById('startScanBtn'); if (s) s.style.display = 'block';
-    const x = document.getElementById('stopScanBtn');  if (x) x.style.display = 'none';
-  } else if (mode === 'mini') {
-    if (state.miniScanInterval) { state.miniScanInterval.stop(); state.miniScanInterval = null; }
-    if (state.miniScanStream)   { state.miniScanStream.getTracks().forEach(t => t.stop()); state.miniScanStream = null; }
-    const v = document.getElementById('miniVideo');    if (v) v.srcObject = null;
-    const m = document.getElementById('miniScanner'); if (m) m.classList.add('hidden');
-  } else if (mode === 'borrow') {
-    if (state.borrowScanInterval) { state.borrowScanInterval.stop(); state.borrowScanInterval = null; }
-    if (state.borrowScanStream)   { state.borrowScanStream.getTracks().forEach(t => t.stop()); state.borrowScanStream = null; }
-    const v = document.getElementById('borrowVideo'); if (v) v.srcObject = null;
-    const m = document.getElementById('borrowMiniScanner'); if (m) m.classList.add('hidden');
   }
 }
 
@@ -581,8 +583,7 @@ async function init() {
 
   // Scan page
   document.getElementById('startScanBtn').addEventListener('click', () => startScan('main'));
-  document.getElementById('stopScanBtn').addEventListener('click', () => stopScan('main'));
-  document.getElementById('manualLookupBtn').addEventListener('click', () => {
+  document.getElementById('stopScanBtn').addEventListener('click', () => stopScan('main'));  document.getElementById('manualLookupBtn').addEventListener('click', () => {
     const code = document.getElementById('manualBarcode').value.trim();
     if (!code) return;
     showScanResult(lookupBarcode(code), 'scanResult');
