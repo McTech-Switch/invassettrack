@@ -25,35 +25,18 @@ const state = {
 // ── LOAD ZXING ────────────────────────────────
 function loadZXing() {
   return new Promise((resolve) => {
-    // Check if already loaded
-    if (typeof ZXing !== 'undefined') {
-      state.zxing = true;
-      console.log('✓ ZXing already loaded');
-      resolve(true);
-      return;
-    }
-
     const script = document.createElement('script');
     script.src = 'https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js';
     script.onload = () => {
+      // Just flag that ZXing is available — we create readers per-scan
       if (typeof ZXing !== 'undefined') {
         state.zxing = true;
-        console.log('✓ ZXing loaded successfully');
         resolve(true);
       } else {
-        console.warn('⚠ ZXing object not found after script load');
         resolve(false);
       }
     };
-    script.onerror = (err) => {
-      console.error('✗ Failed to load ZXing:', err);
-      resolve(false);
-    };
-    script.onreadystatechange = () => {
-      if (script.readyState === 'loaded' || script.readyState === 'complete') {
-        script.onload();
-      }
-    };
+    script.onerror = () => resolve(false);
     document.head.appendChild(script);
   });
 }
@@ -174,7 +157,7 @@ function renderInventory() {
 
   if (items.length === 0) {
     list.innerHTML = `<div class="empty-state">
-      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2H10a2 2 0 0 0-2 2v2M6 21h12a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2z"/></svg>
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-4 0v2M8 7V5a2 2 0 0 0-4 0v2"/></svg>
       <p>${state.searchQuery ? 'No items match your search.' : 'No items yet.<br/>Add your first item using the + tab.'}</p>
     </div>`;
     return;
@@ -193,7 +176,7 @@ function renderInventory() {
       </div>
       <div class="item-meta">
         ${item.category ? `<span class="item-cat">${esc(item.category)}</span>` : ''}
-        ${item.location ? `<span class="item-tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg> ${esc(item.location)}</span>` : ''}
+        ${item.location ? `<span class="item-tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5S13.38 11.5 12 11.5z"/></svg>${esc(item.location)}</span>` : ''}
         ${item.barcode ? `<span class="item-tag" style="color:var(--text3)">${esc(item.barcode)}</span>` : ''}
         ${borrowed ? `<span class="item-tag" style="color:var(--accent2)">On Loan</span>` : ''}
         ${low ? `<span class="item-tag" style="color:var(--warn)">⚠ Low Stock</span>` : ''}
@@ -221,7 +204,7 @@ window.showItemDetail = function(id) {
       ${item.supplier ? `<div class="detail-cell full"><div class="label">Supplier</div><div class="value">${esc(item.supplier)}</div></div>` : ''}
       ${item.keywords ? `<div class="detail-cell full"><div class="label">Keywords</div><div class="value">${esc(item.keywords)}</div></div>` : ''}
       ${item.notes ? `<div class="detail-cell full"><div class="label">Notes</div><div class="value">${esc(item.notes)}</div></div>` : ''}
-      ${activeBorrow ? `<div class="detail-cell full" style="border-color:rgba(124,58,237,0.3)"><div class="label" style="color:var(--accent2)">Currently Borrowed By</div><div class="value">${esc(activeBorrow.borrower)}</div></div>` : ''}
+      ${activeBorrow ? `<div class="detail-cell full" style="border-color:rgba(124,58,237,0.3)"><div class="label" style="color:var(--accent2)">Currently Borrowed By</div><div class="value">${esc(activeBorrow.borrower)} — due ${activeBorrow.dueDate || 'no date'}</div></div>` : ''}
     </div>
     <div class="detail-actions">
       <button class="btn-ghost" onclick="editQty('${id}')">Update Qty</button>
@@ -279,140 +262,121 @@ function showScanResult(item, containerId) {
 }
 
 // ── CAMERA / SCAN ─────────────────────────────
-// Uses canvas-polling instead of ZXing's callback API — required for iPhone Safari
+// Polls canvas frames and decodes via ZXing BrowserMultiFormatReader.decodeFromImageUrl
+// This approach works on iPhone Safari where the callback API does not.
+
+const cfg = {
+  main:   { video: 'scannerVideo',  canvas: 'scannerCanvas',  startBtn: 'startScanBtn', stopBtn: 'stopScanBtn' },
+  mini:   { video: 'miniVideo',     canvas: 'miniCanvas',     miniEl: 'miniScanner' },
+  borrow: { video: 'borrowVideo',   canvas: 'borrowCanvas',   miniEl: 'borrowMiniScanner' },
+};
+
+function setScanStatus(msg) {
+  const el = document.getElementById('scanStatus');
+  if (el) el.textContent = msg;
+}
 
 async function startScan(mode) {
   if (!state.zxing) {
-    showToast('Barcode library still loading, try again in a second…');
+    showToast('Scanner still loading — wait a moment and try again');
     return;
   }
 
-  // Map mode to element IDs
-  const cfg = {
-    main:   { video: 'scannerVideo',  canvas: 'scannerCanvas' },
-    mini:   { video: 'miniVideo',     canvas: 'miniCanvas'    },
-    borrow: { video: 'borrowVideo',   canvas: 'borrowCanvas'  },
-  }[mode];
+  const c = cfg[mode];
+  const videoEl  = document.getElementById(c.video);
+  const canvasEl = document.getElementById(c.canvas);
+  if (!videoEl || !canvasEl) { showToast('Scanner element missing'); return; }
 
-  const videoEl  = document.getElementById(cfg.video);
-  const canvasEl = document.getElementById(cfg.canvas);
-  if (!videoEl || !canvasEl) return;
-
-  // Stop any existing scan on this mode first
   stopScan(mode);
 
   try {
-    console.log(`Starting scan (${mode})...`);
-    
+    console.log('Starting scan (' + mode + ')...');
+    setScanStatus('Starting camera…');
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { 
-        facingMode: { ideal: 'environment' }, 
-        width: { ideal: 1280 }, 
-        height: { ideal: 720 }
-      }
+      video: { facingMode: { ideal: 'environment' } }
     });
-
-    console.log(`✓ Camera stream acquired (${mode})`);
+    console.log('✓ Camera stream acquired (' + mode + ')');
 
     videoEl.srcObject = stream;
-    videoEl.setAttribute('playsinline', '');
+    videoEl.setAttribute('playsinline', 'true');
     videoEl.muted = true;
 
-    await new Promise((res, rej) => {
-      const timeout = setTimeout(rej, 8000); // safety timeout
+    await new Promise((resolve, reject) => {
       videoEl.onloadedmetadata = () => {
-        clearTimeout(timeout);
-        videoEl.play().then(res).catch(rej);
+        console.log('✓ Video metadata loaded, playing... (' + mode + ')');
+        videoEl.play().then(() => {
+          console.log('✓ Video playing (' + mode + ')');
+          resolve();
+        }).catch(reject);
       };
+      setTimeout(() => reject(new Error('Camera timeout')), 10000);
     });
 
-    console.log(`✓ Video playing (${mode})`);
+    setScanStatus('Scanning… hold steady');
 
-    // Store stream reference
     if (mode === 'main') {
       state.scanStream = stream;
-      document.getElementById('startScanBtn').style.display = 'none';
-      document.getElementById('stopScanBtn').style.display = 'block';
+      const s = document.getElementById(c.startBtn); if (s) s.style.display = 'none';
+      const x = document.getElementById(c.stopBtn);  if (x) x.style.display = 'block';
     } else if (mode === 'mini') {
       state.miniScanStream = stream;
-      document.getElementById('miniScanner').classList.remove('hidden');
+      document.getElementById(c.miniEl).classList.remove('hidden');
     } else {
       state.borrowScanStream = stream;
+      document.getElementById(c.miniEl).classList.remove('hidden');
     }
 
-    // Create one ZXing reader for this scan session
+    // Use decodeFromVideoElement with continuous scanning
+    // This is the simplest ZXing API and works on both Chrome and Safari
     const reader = new ZXing.BrowserMultiFormatReader();
-    const hints  = new Map();
-    hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-    reader.hints = hints;
+    console.log('✓ ZXing reader created (' + mode + ')');
 
-    console.log(`✓ ZXing reader created (${mode})`);
-
-    // Canvas polling — grab a frame every 300ms and attempt decode
-    const ctx = canvasEl.getContext('2d');
-    let active = true;
-    let attemptCount = 0;
-
-    async function tick() {
-      if (!active) return;
-      if (videoEl.readyState < 2) { setTimeout(tick, 300); return; }
-
-      attemptCount++;
-      canvasEl.width  = videoEl.videoWidth  || 640;
-      canvasEl.height = videoEl.videoHeight || 480;
-      ctx.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
-
-      try {
-        const imageData = ctx.getImageData(0, 0, canvasEl.width, canvasEl.height);
-        const luminance = new ZXing.RGBLuminanceSource(imageData.data, canvasEl.width, canvasEl.height);
-        const binary    = new ZXing.HybridBinarizer(luminance);
-        const bitmap    = new ZXing.BinaryBitmap(binary);
-        const result    = reader.decode(bitmap);
-
-        // ── Got a result ──
-        active = false;
+    // decodeFromVideoElement fires callback repeatedly while active
+    reader.decodeFromVideoElement(videoEl, (result, err) => {
+      if (result) {
         const code = result.getText();
-        console.log(`✓ Barcode scanned: ${code} (${mode}) [${attemptCount} attempts]`);
-
-        if (mode === 'main') {
-          stopScan('main');
-          const item = lookupBarcode(code);
-          showScanResult(item, 'scanResult');
-          showToast(`Scanned: ${code}`);
-        } else if (mode === 'mini') {
-          stopScan('mini');
-          document.getElementById('f-barcode').value = code;
-          showToast(`Barcode captured: ${code}`);
-        } else {
-          stopScan('borrow');
-          document.getElementById('b-item').value = code;
-          handleBorrowItemLookup(code);
-          showToast(`Scanned: ${code}`);
-        }
-
-      } catch (err) {
-        // No barcode this frame — keep polling
-        if (active) setTimeout(tick, 300);
+        console.log('✓ Barcode decoded: ' + code);
+        setScanStatus('✓ Got it!');
+        reader.reset();
+        onScanResult(mode, code);
+      } else if (err && !(err instanceof ZXing.NotFoundException)) {
+        // Log real errors but not "no barcode found" which fires every frame
+        console.warn('ZXing decode error:', err);
       }
-    }
+      // NotFoundException just means no barcode this frame — ignore it
+    });
 
-    // Store stopper so stopScan() can cancel the loop
-    const stopper = { stop() { active = false; try { reader.reset(); } catch {} } };
-    if (mode === 'main')   state.scanInterval   = stopper;
-    else if (mode === 'mini') state.miniScanInterval = stopper;
-    else                   state.borrowScanInterval = stopper;
-
-    setTimeout(tick, 500); // small delay to let camera warm up
+    const stopper = {
+      stop() {
+        try { reader.reset(); } catch {}
+      }
+    };
+    if (mode === 'main')        state.scanInterval       = stopper;
+    else if (mode === 'mini')   state.miniScanInterval   = stopper;
+    else                        state.borrowScanInterval = stopper;
 
   } catch (err) {
-    console.error(`✗ Camera error (${mode}):`, err);
+    setScanStatus('');
     if (err.name === 'NotAllowedError') {
-      showToast('📱 Camera denied — go to Settings → Safari → Camera → Allow');
-    } else if (err.name === 'NotFoundError') {
-      showToast('❌ No camera found on this device');
+      showToast('Camera blocked — go to Settings → Safari → Camera → Allow');
     } else {
-      showToast('⚠️ Camera error: ' + err.message);
+      showToast('Camera error: ' + (err.message || err));
     }
+  }
+}
+
+function onScanResult(mode, code) {
+  stopScan(mode);
+  if (mode === 'main') {
+    showScanResult(lookupBarcode(code), 'scanResult');
+    showToast('Scanned: ' + code);
+  } else if (mode === 'mini') {
+    document.getElementById('f-barcode').value = code;
+    showToast('Barcode captured: ' + code);
+  } else {
+    document.getElementById('b-item').value = code;
+    handleBorrowItemLookup(code);
+    showToast('Scanned: ' + code);
   }
 }
 
@@ -482,7 +446,7 @@ function handleBorrowItemLookup(query) {
     preview.classList.remove('hidden');
     return;
   }
-  preview.innerHTML = `<strong>${esc(item.name)}</strong> ${esc(item.location) || ''} · Qty: ${item.qty}`;
+  preview.innerHTML = `<strong>${esc(item.name)}</strong>${esc(item.location) || ''} · Qty: ${item.qty}`;
   preview.classList.remove('hidden');
   preview.dataset.itemId = item.id;
   preview.dataset.itemName = item.name;
@@ -608,14 +572,8 @@ async function init() {
   }, 1400);
 
   // Load ZXing in background
-  console.log('Loading ZXing library…');
   loadZXing().then(ok => {
-    if (!ok) {
-      console.warn('⚠ ZXing failed to load — barcode scanning unavailable');
-      showToast('⚠️ Barcode scanner not available');
-    } else {
-      console.log('✓ AssetTrack ready!');
-    }
+    if (!ok) console.warn('ZXing failed to load — barcode scanning unavailable');
   });
 
   renderInventory();
