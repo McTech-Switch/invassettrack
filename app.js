@@ -372,8 +372,7 @@ function onScanResult(mode, code) {
     showScanResult(lookupBarcode(code), 'scanResult');
     showToast('Scanned: ' + code);
   } else if (mode === 'mini') {
-    document.getElementById('f-barcode').value = code;
-    showToast('Barcode captured: ' + code);
+    handleWizardScan(code);
   } else {
     document.getElementById('b-item').value = code;
     handleBorrowItemLookup(code);
@@ -381,41 +380,227 @@ function onScanResult(mode, code) {
   }
 }
 
-// ── ADD ITEM ──────────────────────────────────
-function saveItem() {
-  const name = document.getElementById('f-name').value.trim();
-  const qty = document.getElementById('f-qty').value.trim();
-  if (!name) { showToast('Item name is required'); return; }
-  if (qty === '') { showToast('Quantity is required'); return; }
+// ── ITEM WIZARD ───────────────────────────────
+const wz = {
+  barcode: '', name: '', location: '', category: '',
+  keywords: [], qty: 1, minstock: 0, supplier: '', notes: '', photo: '',
+};
 
+const DEFAULT_LOCATIONS = ['IT Room Shelf A1','IT Room Shelf B2','Science Lab Cabinet','Drama Room Rack','Storage Room','Library Shelf'];
+const DEFAULT_CATEGORIES = ['Electronics','Cables & Adapters','Furniture','Stationery','Lab Equipment','Costumes & Props','Tools','Other'];
+const DEFAULT_KEYWORDS   = ['cable','laptop','charger','monitor','display','projector','keyboard','mouse','adapter','USB','HDMI','power'];
+
+let customLocations  = JSON.parse(localStorage.getItem('at_locations')  || '[]');
+let customCategories = JSON.parse(localStorage.getItem('at_categories') || '[]');
+let customKeywords   = JSON.parse(localStorage.getItem('at_keywords')   || '[]');
+
+function saveCustomLists() {
+  localStorage.setItem('at_locations',  JSON.stringify(customLocations));
+  localStorage.setItem('at_categories', JSON.stringify(customCategories));
+  localStorage.setItem('at_keywords',   JSON.stringify(customKeywords));
+}
+
+function openWizard() {
+  // Reset state
+  Object.assign(wz, { barcode:'', name:'', location:'', category:'', keywords:[], qty:1, minstock:0, supplier:'', notes:'', photo:'' });
+  wzGoTo(0);
+  document.getElementById('wizardModal').classList.remove('hidden');
+  // Start scanner for step 0
+  setTimeout(() => startScan('mini'), 300);
+}
+
+function closeWizard() {
+  stopScan('mini');
+  document.getElementById('wizardModal').classList.add('hidden');
+}
+
+function wzGoTo(step) {
+  document.querySelectorAll('.wizard-step').forEach((el, i) => {
+    el.classList.toggle('hidden', i !== step);
+  });
+  if (step === 2) renderWzChips('location');
+  if (step === 3) renderWzChips('category');
+  if (step === 4) renderWzChips('keywords');
+}
+
+function renderWzChips(type) {
+  if (type === 'location') {
+    const all = [...DEFAULT_LOCATIONS, ...customLocations];
+    const el = document.getElementById('wz-location-chips');
+    el.innerHTML = all.map(l => `<button class="wz-chip${wz.location===l?' selected':''}" onclick="wzSelectChip('location','${esc(l)}')">${esc(l)}</button>`).join('');
+  } else if (type === 'category') {
+    const all = [...DEFAULT_CATEGORIES, ...customCategories];
+    const el = document.getElementById('wz-category-chips');
+    el.innerHTML = all.map(c => `<button class="wz-chip${wz.category===c?' selected':''}" onclick="wzSelectChip('category','${esc(c)}')">${esc(c)}</button>`).join('');
+  } else if (type === 'keywords') {
+    const all = [...DEFAULT_KEYWORDS, ...customKeywords];
+    const el = document.getElementById('wz-keyword-chips');
+    el.innerHTML = all.map(k => `<button class="wz-chip keyword-chip${wz.keywords.includes(k)?' selected':''}" onclick="wzToggleKeyword('${esc(k)}')">${esc(k)}</button>`).join('');
+  }
+}
+
+window.wzSelectChip = function(type, val) {
+  if (type === 'location') { wz.location = val; renderWzChips('location'); }
+  if (type === 'category') { wz.category = val; renderWzChips('category'); }
+};
+
+window.wzToggleKeyword = function(kw) {
+  if (wz.keywords.includes(kw)) wz.keywords = wz.keywords.filter(k => k !== kw);
+  else wz.keywords.push(kw);
+  renderWzChips('keywords');
+};
+
+function wzSaveItem() {
+  if (!wz.name.trim()) { showToast('Item name is required'); wzGoTo(1); return; }
   const item = {
     id: generateId(),
-    name,
-    barcode: document.getElementById('f-barcode').value.trim(),
-    category: document.getElementById('f-category').value.trim(),
-    qty: parseInt(qty) || 0,
-    minstock: parseInt(document.getElementById('f-minstock').value) || 0,
-    location: document.getElementById('f-location').value.trim(),
-    keywords: document.getElementById('f-keywords').value.trim(),
-    supplier: document.getElementById('f-supplier').value.trim(),
-    notes: document.getElementById('f-notes').value.trim(),
+    name: wz.name.trim(),
+    barcode: wz.barcode,
+    category: wz.category,
+    qty: parseInt(wz.qty) || 1,
+    minstock: parseInt(wz.minstock) || 0,
+    location: wz.location,
+    keywords: wz.keywords.join(', '),
+    supplier: wz.supplier,
+    notes: wz.notes,
+    photo: wz.photo,
     created: new Date().toISOString(),
   };
-
   state.items.push(item);
   saveLocal();
   renderInventory();
-
-  const status = document.getElementById('saveStatus');
-  status.textContent = `✓ Saved as ${item.id}`;
-  status.className = 'save-status ok';
-
-  // Reset form
-  ['f-name','f-barcode','f-category','f-qty','f-minstock','f-location','f-keywords','f-supplier','f-notes']
-    .forEach(id => { document.getElementById(id).value = ''; });
-
+  closeWizard();
   pushToSheets(item).catch(() => {});
-  showToast(`${item.name} added (${item.id})`);
+  showToast(`✓ ${item.name} saved as ${item.id}`);
+}
+
+function initWizard() {
+  // New Item button
+  document.getElementById('newItemBtn').addEventListener('click', openWizard);
+  document.getElementById('newItemManualBtn').addEventListener('click', () => {
+    openWizard();
+    setTimeout(() => {
+      stopScan('mini');
+      wzGoTo(1); // skip straight to name entry
+    }, 100);
+  });
+
+  // Backdrop close
+  document.getElementById('wizardBackdrop').addEventListener('click', closeWizard);
+
+  // Step 0 — scan result handled in onScanResult via mode 'mini'
+  document.getElementById('wz-barcode-confirm').addEventListener('click', () => {
+    const val = document.getElementById('wz-barcode-manual').value.trim();
+    wz.barcode = val;
+    stopScan('mini');
+    const badge = document.getElementById('wz-barcode-badge');
+    badge.textContent = val ? `Barcode: ${val}` : '';
+    wzGoTo(1);
+  });
+  document.getElementById('wzSkipBarcode').addEventListener('click', () => {
+    wz.barcode = '';
+    stopScan('mini');
+    wzGoTo(1);
+  });
+
+  // Step 1 — name
+  document.getElementById('wz-name-next').addEventListener('click', () => {
+    const val = document.getElementById('wz-name').value.trim();
+    if (!val) { showToast('Please enter a name'); return; }
+    wz.name = val;
+    wzGoTo(2);
+  });
+  document.getElementById('wz-name').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('wz-name-next').click();
+  });
+
+  // Step 2 — location
+  document.getElementById('wz-location-add').addEventListener('click', () => {
+    const val = document.getElementById('wz-location-new').value.trim();
+    if (!val) return;
+    if (!customLocations.includes(val) && !DEFAULT_LOCATIONS.includes(val)) {
+      customLocations.push(val); saveCustomLists();
+    }
+    wz.location = val;
+    document.getElementById('wz-location-new').value = '';
+    renderWzChips('location');
+  });
+  document.getElementById('wz-location-next').addEventListener('click', () => {
+    const typed = document.getElementById('wz-location-new').value.trim();
+    if (typed) wz.location = typed;
+    wzGoTo(3);
+  });
+  document.getElementById('wz-location-skip').addEventListener('click', () => { wz.location = ''; wzGoTo(3); });
+
+  // Step 3 — category
+  document.getElementById('wz-category-add').addEventListener('click', () => {
+    const val = document.getElementById('wz-category-new').value.trim();
+    if (!val) return;
+    if (!customCategories.includes(val) && !DEFAULT_CATEGORIES.includes(val)) {
+      customCategories.push(val); saveCustomLists();
+    }
+    wz.category = val;
+    document.getElementById('wz-category-new').value = '';
+    renderWzChips('category');
+  });
+  document.getElementById('wz-category-next').addEventListener('click', () => {
+    const typed = document.getElementById('wz-category-new').value.trim();
+    if (typed) wz.category = typed;
+    wzGoTo(4);
+  });
+  document.getElementById('wz-category-skip').addEventListener('click', () => { wz.category = ''; wzGoTo(4); });
+
+  // Step 4 — keywords + details
+  document.getElementById('wz-keyword-add').addEventListener('click', () => {
+    const val = document.getElementById('wz-keyword-new').value.trim();
+    if (!val) return;
+    if (!customKeywords.includes(val) && !DEFAULT_KEYWORDS.includes(val)) {
+      customKeywords.push(val); saveCustomLists();
+    }
+    if (!wz.keywords.includes(val)) wz.keywords.push(val);
+    document.getElementById('wz-keyword-new').value = '';
+    renderWzChips('keywords');
+  });
+  document.getElementById('wz-details-next').addEventListener('click', () => {
+    wz.qty      = document.getElementById('wz-qty').value || 1;
+    wz.minstock = document.getElementById('wz-minstock').value || 0;
+    wz.supplier = document.getElementById('wz-supplier').value.trim();
+    wz.notes    = document.getElementById('wz-notes').value.trim();
+    wzGoTo(5);
+  });
+
+  // Step 5 — photo
+  document.getElementById('wz-photo-btn').addEventListener('click', () => {
+    document.getElementById('wz-photo-input').click();
+  });
+  document.getElementById('wz-photo-input').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      wz.photo = ev.target.result;
+      const preview = document.getElementById('wz-photo-preview');
+      preview.innerHTML = `<img src="${wz.photo}" alt="Item photo" />`;
+    };
+    reader.readAsDataURL(file);
+  });
+  document.getElementById('wz-save-btn').addEventListener('click', wzSaveItem);
+  document.getElementById('wz-skip-photo').addEventListener('click', wzSaveItem);
+}
+
+// Called by onScanResult when mode === 'mini' (wizard scan step)
+function handleWizardScan(code) {
+  wz.barcode = code;
+  const badge = document.getElementById('wz-barcode-badge');
+  if (badge) badge.textContent = `Barcode: ${code}`;
+  wzGoTo(1);
+  // Pre-fill name input if we can look it up
+  const existing = lookupBarcode(code);
+  if (existing) {
+    showToast(`"${existing.name}" already exists — editing quantity`);
+    closeWizard();
+    showItemDetail(existing.id);
+  }
 }
 
 // ── BORROW ────────────────────────────────────
@@ -592,10 +777,8 @@ async function init() {
     if (e.key === 'Enter') document.getElementById('manualLookupBtn').click();
   });
 
-  // Add item
-  document.getElementById('saveItemBtn').addEventListener('click', saveItem);
-  document.getElementById('scanBarcodeBtn').addEventListener('click', () => startScan('mini'));
-  document.getElementById('closeMiniScanner').addEventListener('click', () => stopScan('mini'));
+  // Add item — wizard
+  initWizard();
 
   // Borrow page
   document.getElementById('borrowBtn').addEventListener('click', recordBorrow);
