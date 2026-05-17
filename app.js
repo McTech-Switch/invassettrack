@@ -46,14 +46,6 @@ async function loadLibraries() {
 }
 
 // ── AUTH ──────────────────────────────────────
-async function signInWithProvider(provider) {
-  const { error } = await sb.auth.signInWithOAuth({
-    provider,
-    options: { redirectTo: window.location.href }
-  });
-  if (error) showToast('Sign in failed: ' + error.message);
-}
-
 async function signInWithEmail(email, password) {
   const { error } = await sb.auth.signInWithPassword({ email, password });
   if (error) {
@@ -780,14 +772,43 @@ async function init() {
   document.getElementById('splash').classList.add('fade-out');
   setTimeout(() => document.getElementById('splash').style.display = 'none', 400);
 
-  // Auth screen buttons
-  document.getElementById('authGoogleBtn').addEventListener('click', () => signInWithProvider('google'));
-  document.getElementById('authAppleBtn').addEventListener('click',  () => signInWithProvider('apple'));
+  // Auth screen — tab switching
+  document.getElementById('tabPassword').addEventListener('click', () => {
+    document.getElementById('tabPassword').classList.add('active');
+    document.getElementById('tabMagic').classList.remove('active');
+    document.getElementById('panelPassword').classList.remove('hidden');
+    document.getElementById('panelMagic').classList.add('hidden');
+  });
+  document.getElementById('tabMagic').addEventListener('click', () => {
+    document.getElementById('tabMagic').classList.add('active');
+    document.getElementById('tabPassword').classList.remove('active');
+    document.getElementById('panelMagic').classList.remove('hidden');
+    document.getElementById('panelPassword').classList.add('hidden');
+  });
+
+  // Email + password
   document.getElementById('authEmailBtn').addEventListener('click', () => {
     const email = document.getElementById('authEmail').value.trim();
     const pass  = document.getElementById('authPass').value.trim();
     if (!email || !pass) { showToast('Enter email and password'); return; }
     signInWithEmail(email, pass);
+  });
+  document.getElementById('authPass').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('authEmailBtn').click();
+  });
+
+  // Magic link
+  document.getElementById('authMagicBtn').addEventListener('click', async () => {
+    const email = document.getElementById('authMagicEmail').value.trim();
+    if (!email) { showToast('Enter your email address'); return; }
+    const { error } = await sb.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: window.location.href }
+    });
+    if (error) { showToast(error.message); return; }
+    document.getElementById('magicSent').classList.remove('hidden');
+    document.getElementById('authMagicBtn').disabled = true;
+    document.getElementById('authMagicBtn').textContent = 'Sent!';
   });
 
   // Check if already logged in (e.g. OAuth redirect back)
