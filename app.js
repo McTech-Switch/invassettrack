@@ -1,18 +1,23 @@
 // ─────────────────────────────────────────────
 //  AssetTrack — app.js
-//  Barcode scanning via ZXing (loaded from CDN)
-//  Storage: localStorage + optional Google Sheets
+//  Barcode scanning: html5-qrcode
+//  Backend: Supabase (PostgreSQL + Auth)
 // ─────────────────────────────────────────────
 
 'use strict';
 
+const SUPABASE_URL  = 'https://jksrecoxcfawtxtrfugs.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imprc3JlY294Y2Zhd3R4dHJmdWdzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwNTkwMTQsImV4cCI6MjA5NDYzNTAxNH0.Nsm8LjNfBJutOg4ifN1bUpUnk5lcXNWEiqYhBltp7P0';
+
+let sb = null; // Supabase client — set after SDK loads
+
 // ── STATE ──────────────────────────────────────
 const state = {
+  user: null,
   items: [],
   borrows: [],
   filter: 'all',
   searchQuery: '',
-  sheetsUrl: '',
   scanStream: null,
   scanInterval: null,
   miniScanStream: null,
@@ -22,93 +27,144 @@ const state = {
   zxing: null,
 };
 
-// ── LOAD html5-qrcode ─────────────────────────
-function loadZXing() {
-  return new Promise((resolve) => {
-    const script = document.createElement('script');
-    script.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
-    script.onload = () => {
-      if (typeof Html5Qrcode !== 'undefined') {
-        console.log('✓ html5-qrcode loaded');
-        state.zxing = true;
-        resolve(true);
-      } else {
-        resolve(false);
-      }
-    };
-    script.onerror = () => resolve(false);
-    document.head.appendChild(script);
+// ── LOAD LIBRARIES ────────────────────────────
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
   });
 }
 
-// ── STORAGE ───────────────────────────────────
-function saveLocal() {
-  localStorage.setItem('assettrack_items', JSON.stringify(state.items));
-  localStorage.setItem('assettrack_borrows', JSON.stringify(state.borrows));
+async function loadLibraries() {
+  await loadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js');
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+  await loadScript('https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js');
+  state.zxing = typeof Html5Qrcode !== 'undefined';
 }
 
-function loadLocal() {
-  try {
-    state.items = JSON.parse(localStorage.getItem('assettrack_items') || '[]');
-    state.borrows = JSON.parse(localStorage.getItem('assettrack_borrows') || '[]');
-    state.sheetsUrl = localStorage.getItem('assettrack_sheets_url') || '';
-  } catch {
-    state.items = [];
-    state.borrows = [];
-  }
+// ── AUTH ──────────────────────────────────────
+async function signInWithProvider(provider) {
+  const { error } = await sb.auth.signInWithOAuth({
+    provider,
+    options: { redirectTo: window.location.href }
+  });
+  if (error) showToast('Sign in failed: ' + error.message);
 }
 
-function generateId() {
-  const num = (state.items.length + 1).toString().padStart(3, '0');
-  return `INV-${num}`;
-}
-
-// ── GOOGLE SHEETS ─────────────────────────────
-async function syncFromSheets() {
-  if (!state.sheetsUrl) return false;
-  try {
-    const res = await fetch(`${state.sheetsUrl}?action=getAll`);
-    if (!res.ok) return false;
-    const data = await res.json();
-    if (data.items) {
-      state.items = data.items;
-      saveLocal();
-      return true;
+async function signInWithEmail(email, password) {
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) {
+    // Try sign up if user doesn't exist
+    if (error.message.includes('Invalid login')) {
+      const { error: e2 } = await sb.auth.signUp({ email, password });
+      if (e2) { showToast(e2.message); return; }
+      showToast('Account created! Check your email to confirm.');
+    } else {
+      showToast(error.message);
     }
-    return false;
-  } catch {
-    return false;
   }
 }
 
-async function pushToSheets(item) {
-  if (!state.sheetsUrl) return false;
-  try {
-    await fetch(state.sheetsUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'addItem', item }),
-      mode: 'no-cors',
-    });
-    return true;
-  } catch {
-    return false;
-  }
+async function signOut() {
+  await sb.auth.signOut();
+  state.user = null;
+  state.items = [];
+  state.borrows = [];
+  showAuthScreen();
 }
 
-async function pushBorrowToSheets(borrow) {
-  if (!state.sheetsUrl) return false;
-  try {
-    await fetch(state.sheetsUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'addBorrow', borrow }),
-      mode: 'no-cors',
-    });
-    return true;
-  } catch {
-    return false;
-  }
+function showAuthScreen() {
+  document.getElementById('authScreen').classList.remove('hidden');
+  document.getElementById('app').classList.add('hidden');
+}
+
+async function showApp(user) {
+  state.user = user;
+  document.getElementById('authScreen').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  document.getElementById('userEmail').textContent = user.email || user.user_metadata?.full_name || 'Signed in';
+  await loadAllData();
+  renderInventory();
+  renderBorrows();
+}
+
+// ── SUPABASE DATA ─────────────────────────────
+function generateId() {
+  const ts = Date.now().toString(36).toUpperCase();
+  const rnd = Math.random().toString(36).slice(2,5).toUpperCase();
+  return `INV-${ts}-${rnd}`;
+}
+
+async function loadAllData() {
+  const [itemsRes, borrowsRes] = await Promise.all([
+    sb.from('items').select('*').order('created_at', { ascending: false }),
+    sb.from('borrows').select('*').order('created_at', { ascending: false }),
+  ]);
+  state.items   = itemsRes.data  || [];
+  state.borrows = borrowsRes.data || [];
+}
+
+async function dbAddItem(item) {
+  const row = {
+    id: item.id, user_id: state.user.id,
+    name: item.name, barcode: item.barcode,
+    category: item.category, qty: item.qty,
+    minstock: item.minstock, location: item.location,
+    keywords: item.keywords, supplier: item.supplier,
+    notes: item.notes, photo: item.photo,
+  };
+  const { error } = await sb.from('items').insert(row);
+  if (error) { showToast('Save failed: ' + error.message); return false; }
+  return true;
+}
+
+async function dbUpdateItem(id, changes) {
+  const { error } = await sb.from('items').update(changes).eq('id', id);
+  if (error) { showToast('Update failed: ' + error.message); return false; }
+  return true;
+}
+
+async function dbDeleteItem(id) {
+  const { error } = await sb.from('items').delete().eq('id', id);
+  if (error) { showToast('Delete failed: ' + error.message); return false; }
+  return true;
+}
+
+async function dbAddBorrow(borrow) {
+  const row = {
+    id: borrow.id, user_id: state.user.id,
+    item_id: borrow.itemId, item_name: borrow.itemName,
+    borrower: borrow.borrower, borrow_date: borrow.borrowDate,
+    due_date: borrow.dueDate, returned: false,
+  };
+  const { error } = await sb.from('borrows').insert(row);
+  if (error) { showToast('Save failed: ' + error.message); return false; }
+  return true;
+}
+
+async function dbReturnBorrow(id, returnDate) {
+  const { error } = await sb.from('borrows').update({ returned: true, return_date: returnDate }).eq('id', id);
+  if (error) { showToast('Update failed: ' + error.message); return false; }
+  return true;
+}
+
+async function dbAddCustom(table, name) {
+  const { error } = await sb.from(table).insert({ user_id: state.user.id, name });
+  if (error) console.warn('Custom list save:', error.message);
+}
+
+async function loadCustomLists() {
+  const [loc, cat, kw] = await Promise.all([
+    sb.from('locations').select('name'),
+    sb.from('categories').select('name'),
+    sb.from('keywords').select('name'),
+  ]);
+  customLocations  = (loc.data  || []).map(r => r.name);
+  customCategories = (cat.data  || []).map(r => r.name);
+  customKeywords   = (kw.data   || []).map(r => r.name);
 }
 
 // ── TOAST ─────────────────────────────────────
@@ -215,24 +271,26 @@ window.showItemDetail = function(id) {
   modal.classList.remove('hidden');
 };
 
-window.editQty = function(id) {
+window.editQty = async function(id) {
   const item = state.items.find(i => i.id === id);
   if (!item) return;
   const newQty = prompt(`Update quantity for "${item.name}":`, item.qty);
   if (newQty === null) return;
   const parsed = parseInt(newQty);
   if (isNaN(parsed)) { showToast('Invalid quantity'); return; }
+  const ok = await dbUpdateItem(id, { qty: parsed });
+  if (!ok) return;
   item.qty = parsed;
-  saveLocal();
   renderInventory();
   document.getElementById('itemModal').classList.add('hidden');
   showToast('Quantity updated');
 };
 
-window.deleteItem = function(id) {
+window.deleteItem = async function(id) {
   if (!confirm('Delete this item?')) return;
+  const ok = await dbDeleteItem(id);
+  if (!ok) return;
   state.items = state.items.filter(i => i.id !== id);
-  saveLocal();
   renderInventory();
   document.getElementById('itemModal').classList.add('hidden');
   showToast('Item deleted');
@@ -450,7 +508,7 @@ window.wzToggleKeyword = function(kw) {
   renderWzChips('keywords');
 };
 
-function wzSaveItem() {
+async function wzSaveItem() {
   if (!wz.name.trim()) { showToast('Item name is required'); wzGoTo(1); return; }
   const item = {
     id: generateId(),
@@ -464,14 +522,14 @@ function wzSaveItem() {
     supplier: wz.supplier,
     notes: wz.notes,
     photo: wz.photo,
-    created: new Date().toISOString(),
+    created_at: new Date().toISOString(),
   };
-  state.items.push(item);
-  saveLocal();
+  const ok = await dbAddItem(item);
+  if (!ok) return;
+  state.items.unshift(item);
   renderInventory();
   closeWizard();
-  pushToSheets(item).catch(() => {});
-  showToast(`✓ ${item.name} saved as ${item.id}`);
+  showToast(`✓ ${item.name} saved`);
 }
 
 function initWizard() {
@@ -519,7 +577,8 @@ function initWizard() {
     const val = document.getElementById('wz-location-new').value.trim();
     if (!val) return;
     if (!customLocations.includes(val) && !DEFAULT_LOCATIONS.includes(val)) {
-      customLocations.push(val); saveCustomLists();
+      customLocations.push(val);
+      dbAddCustom('locations', val);
     }
     wz.location = val;
     document.getElementById('wz-location-new').value = '';
@@ -537,7 +596,8 @@ function initWizard() {
     const val = document.getElementById('wz-category-new').value.trim();
     if (!val) return;
     if (!customCategories.includes(val) && !DEFAULT_CATEGORIES.includes(val)) {
-      customCategories.push(val); saveCustomLists();
+      customCategories.push(val);
+      dbAddCustom('categories', val);
     }
     wz.category = val;
     document.getElementById('wz-category-new').value = '';
@@ -555,7 +615,8 @@ function initWizard() {
     const val = document.getElementById('wz-keyword-new').value.trim();
     if (!val) return;
     if (!customKeywords.includes(val) && !DEFAULT_KEYWORDS.includes(val)) {
-      customKeywords.push(val); saveCustomLists();
+      customKeywords.push(val);
+      dbAddCustom('keywords', val);
     }
     if (!wz.keywords.includes(val)) wz.keywords.push(val);
     document.getElementById('wz-keyword-new').value = '';
@@ -618,7 +679,7 @@ function handleBorrowItemLookup(query) {
   preview.dataset.itemName = item.name;
 }
 
-function recordBorrow() {
+async function recordBorrow() {
   const query = document.getElementById('b-item').value.trim();
   const borrower = document.getElementById('b-name').value.trim();
   if (!query || !borrower) { showToast('Fill in item and borrower name'); return; }
@@ -637,29 +698,32 @@ function recordBorrow() {
     dueDate: document.getElementById('b-date').value,
     returned: false,
   };
-  state.borrows.push(borrow);
-  saveLocal();
+  const ok = await dbAddBorrow(borrow);
+  if (!ok) return;
+  // Store locally with snake_case to match DB shape
+  state.borrows.unshift({ ...borrow, item_id: borrow.itemId, item_name: borrow.itemName, borrow_date: borrow.borrowDate, due_date: borrow.dueDate });
   renderBorrows();
   document.getElementById('b-item').value = '';
   document.getElementById('b-name').value = '';
   document.getElementById('b-date').value = '';
   document.getElementById('borrowItemResult').classList.add('hidden');
-  pushBorrowToSheets(borrow).catch(() => {});
   showToast(`Borrow recorded for ${item.name}`);
 }
 
-function recordReturn() {
+async function recordReturn() {
   const query = document.getElementById('b-item').value.trim();
   if (!query) { showToast('Enter item barcode or name'); return; }
   const item = lookupBarcode(query);
   if (!item) { showToast('Item not found'); return; }
 
-  const borrow = state.borrows.find(b => b.itemId === item.id && !b.returned);
+  const borrow = state.borrows.find(b => (b.item_id || b.itemId) === item.id && !b.returned);
   if (!borrow) { showToast('No active borrow found for this item'); return; }
 
+  const returnDate = new Date().toLocaleDateString('en-AU');
+  const ok = await dbReturnBorrow(borrow.id, returnDate);
+  if (!ok) return;
   borrow.returned = true;
-  borrow.returnDate = new Date().toLocaleDateString('en-AU');
-  saveLocal();
+  borrow.return_date = returnDate;
   renderBorrows();
   renderInventory();
   document.getElementById('b-item').value = '';
@@ -676,46 +740,29 @@ function renderBorrows() {
   }
   const today = new Date(); today.setHours(0,0,0,0);
   list.innerHTML = active.map(b => {
-    const due = b.dueDate ? new Date(b.dueDate) : null;
+    const itemName   = b.item_name  || b.itemName  || '';
+    const borrowDate = b.borrow_date || b.borrowDate || '';
+    const dueDate    = b.due_date   || b.dueDate   || '';
+    const due = dueDate ? new Date(dueDate) : null;
     const overdue = due && due < today;
     return `<div class="borrow-card">
-      <div class="borrow-item">${esc(b.itemName)}</div>
+      <div class="borrow-item">${esc(itemName)}</div>
       <div class="borrow-who">Borrowed by: ${esc(b.borrower)}</div>
       <div class="borrow-date ${overdue ? 'borrow-overdue' : ''}">
-        Borrowed: ${b.borrowDate} ${b.dueDate ? `· Due: ${b.dueDate}${overdue ? ' ⚠ OVERDUE' : ''}` : ''}
+        Borrowed: ${borrowDate} ${dueDate ? `· Due: ${dueDate}${overdue ? ' ⚠ OVERDUE' : ''}` : ''}
       </div>
     </div>`;
   }).join('');
 }
 
-// ── SETUP ─────────────────────────────────────
+// ── ACCOUNT ───────────────────────────────────
 function openSetup() {
-  document.getElementById('sheetsUrl').value = state.sheetsUrl;
   document.getElementById('setupModal').classList.remove('hidden');
-  document.getElementById('setupStatus').className = 'save-status hidden';
+  document.getElementById('userEmailDisplay').textContent = state.user?.email || state.user?.user_metadata?.full_name || '';
 }
 
 function saveSetup() {
-  const url = document.getElementById('sheetsUrl').value.trim();
-  state.sheetsUrl = url;
-  localStorage.setItem('assettrack_sheets_url', url);
-  const s = document.getElementById('setupStatus');
-  s.textContent = url ? '✓ Google Sheets URL saved' : 'Cleared — using local storage only';
-  s.className = 'save-status ok';
-}
-
-async function testConnection() {
-  const s = document.getElementById('setupStatus');
-  s.textContent = 'Testing…';
-  s.className = 'save-status ok';
-  const ok = await syncFromSheets();
-  if (ok) {
-    renderInventory();
-    s.textContent = `✓ Connected! Loaded ${state.items.length} items.`;
-  } else {
-    s.textContent = '✗ Could not connect. Check URL and Apps Script permissions.';
-    s.className = 'save-status err';
-  }
+  document.getElementById('setupModal').classList.add('hidden');
 }
 
 // ── UTIL ──────────────────────────────────────
@@ -726,24 +773,39 @@ function esc(str) {
 
 // ── INIT ──────────────────────────────────────
 async function init() {
-  loadLocal();
+  // Show splash, load libraries in parallel
+  await loadLibraries();
 
-  // Splash
-  setTimeout(() => {
-    document.getElementById('splash').classList.add('fade-out');
-    setTimeout(() => {
-      document.getElementById('splash').style.display = 'none';
-      document.getElementById('app').classList.remove('hidden');
-    }, 400);
-  }, 1400);
+  // Hide splash
+  document.getElementById('splash').classList.add('fade-out');
+  setTimeout(() => document.getElementById('splash').style.display = 'none', 400);
 
-  // Load ZXing in background
-  loadZXing().then(ok => {
-    if (!ok) console.warn('ZXing failed to load — barcode scanning unavailable');
+  // Auth screen buttons
+  document.getElementById('authGoogleBtn').addEventListener('click', () => signInWithProvider('google'));
+  document.getElementById('authAppleBtn').addEventListener('click',  () => signInWithProvider('apple'));
+  document.getElementById('authEmailBtn').addEventListener('click', () => {
+    const email = document.getElementById('authEmail').value.trim();
+    const pass  = document.getElementById('authPass').value.trim();
+    if (!email || !pass) { showToast('Enter email and password'); return; }
+    signInWithEmail(email, pass);
   });
 
-  renderInventory();
-  renderBorrows();
+  // Check if already logged in (e.g. OAuth redirect back)
+  const { data: { session } } = await sb.auth.getSession();
+  if (session?.user) {
+    await showApp(session.user);
+  } else {
+    showAuthScreen();
+  }
+
+  // Listen for auth state changes (OAuth redirect, sign out)
+  sb.auth.onAuthStateChange(async (event, session) => {
+    if (session?.user) {
+      await showApp(session.user);
+    } else {
+      showAuthScreen();
+    }
+  });
 
   // Tab switching
   document.querySelectorAll('.tab').forEach(tab => {
@@ -768,7 +830,8 @@ async function init() {
 
   // Scan page
   document.getElementById('startScanBtn').addEventListener('click', () => startScan('main'));
-  document.getElementById('stopScanBtn').addEventListener('click', () => stopScan('main'));  document.getElementById('manualLookupBtn').addEventListener('click', () => {
+  document.getElementById('stopScanBtn').addEventListener('click', () => stopScan('main'));
+  document.getElementById('manualLookupBtn').addEventListener('click', () => {
     const code = document.getElementById('manualBarcode').value.trim();
     if (!code) return;
     showScanResult(lookupBarcode(code), 'scanResult');
@@ -804,15 +867,7 @@ async function init() {
     document.getElementById('setupModal').classList.add('hidden');
   });
   document.getElementById('saveSetupBtn').addEventListener('click', saveSetup);
-  document.getElementById('testConnectionBtn').addEventListener('click', testConnection);
-  document.getElementById('clearDataBtn').addEventListener('click', () => {
-    if (!confirm('Clear all local inventory data? This cannot be undone.')) return;
-    state.items = []; state.borrows = [];
-    saveLocal();
-    renderInventory(); renderBorrows();
-    document.getElementById('setupModal').classList.add('hidden');
-    showToast('All local data cleared');
-  });
+  document.getElementById('signOutBtn').addEventListener('click', signOut);
 
   // Service worker
   if ('serviceWorker' in navigator) {

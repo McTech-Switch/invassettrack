@@ -458,6 +458,52 @@ input::placeholder, textarea::placeholder { color: var(--text3); }
 .toast.show { opacity: 1; }
 .toast.hidden { display: none; }
 
+/* ── AUTH SCREEN ── */
+#authScreen {
+  position: fixed; inset: 0;
+  background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 500; padding: 24px;
+}
+#authScreen.hidden { display: none; }
+
+.auth-wrap {
+  width: 100%; max-width: 360px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.auth-logo { text-align: center; margin-bottom: 8px; }
+.auth-logo svg { margin: 0 auto 12px; display: block; }
+.auth-logo h1 { font-family: var(--display); font-size: 28px; font-weight: 800; }
+.auth-logo p { color: var(--text2); font-size: 13px; margin-top: 4px; }
+
+.auth-btn {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%; padding: 13px; border-radius: var(--radius-sm);
+  font-family: var(--display); font-size: 15px; font-weight: 700;
+  cursor: pointer; border: none; transition: opacity 0.2s;
+}
+.auth-btn:active { opacity: 0.8; }
+.auth-btn.google { background: #fff; color: #333; }
+.auth-btn.apple  { background: #000; color: #fff; border: 1px solid rgba(255,255,255,0.15); }
+.auth-btn.primary { background: var(--accent); color: #000; }
+
+.auth-divider {
+  display: flex; align-items: center; gap: 12px;
+  margin: 4px 0;
+}
+.auth-divider::before, .auth-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.auth-divider span { font-size: 11px; color: var(--text3); white-space: nowrap; text-transform: uppercase; letter-spacing: 0.08em; }
+
+.auth-input {
+  width: 100%; background: var(--bg2);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  color: var(--text); font-family: var(--body); font-size: 15px;
+  padding: 12px 14px; outline: none; -webkit-appearance: none;
+}
+.auth-input:focus { border-color: rgba(0,229,255,0.4); }
+
+.auth-note { font-size: 12px; color: var(--text3); text-align: center; line-height: 1.5; }
+
 /* ── ADD LANDING ── */
 .add-landing {
   display: flex; flex-direction: column; align-items: center;
