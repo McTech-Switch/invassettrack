@@ -78,6 +78,7 @@ async function showApp(user) {
   document.getElementById('authScreen').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
   document.getElementById('userEmail').textContent = user.email || user.user_metadata?.full_name || 'Signed in';
+  await loadCustomLists();
   await loadAllData();
   renderInventory();
   renderBorrows();
@@ -144,19 +145,20 @@ async function dbReturnBorrow(id, returnDate) {
 }
 
 async function dbAddCustom(table, name) {
-  const { error } = await sb.from(table).insert({ user_id: state.user.id, name });
-  if (error) console.warn('Custom list save:', error.message);
+  // Custom lists stored locally — simpler and faster
+  void table; void name;
 }
 
 async function loadCustomLists() {
-  const [loc, cat, kw] = await Promise.all([
-    sb.from('locations').select('name'),
-    sb.from('categories').select('name'),
-    sb.from('keywords').select('name'),
-  ]);
-  customLocations  = (loc.data  || []).map(r => r.name);
-  customCategories = (cat.data  || []).map(r => r.name);
-  customKeywords   = (kw.data   || []).map(r => r.name);
+  customLocations  = JSON.parse(localStorage.getItem('at_locations')  || '[]');
+  customCategories = JSON.parse(localStorage.getItem('at_categories') || '[]');
+  customKeywords   = JSON.parse(localStorage.getItem('at_keywords')   || '[]');
+}
+
+function saveCustomLists() {
+  localStorage.setItem('at_locations',  JSON.stringify(customLocations));
+  localStorage.setItem('at_categories', JSON.stringify(customCategories));
+  localStorage.setItem('at_keywords',   JSON.stringify(customKeywords));
 }
 
 // ── TOAST ─────────────────────────────────────
@@ -570,7 +572,7 @@ function initWizard() {
     if (!val) return;
     if (!customLocations.includes(val) && !DEFAULT_LOCATIONS.includes(val)) {
       customLocations.push(val);
-      dbAddCustom('locations', val);
+      saveCustomLists();
     }
     wz.location = val;
     document.getElementById('wz-location-new').value = '';
@@ -589,7 +591,7 @@ function initWizard() {
     if (!val) return;
     if (!customCategories.includes(val) && !DEFAULT_CATEGORIES.includes(val)) {
       customCategories.push(val);
-      dbAddCustom('categories', val);
+      saveCustomLists();
     }
     wz.category = val;
     document.getElementById('wz-category-new').value = '';
@@ -608,7 +610,7 @@ function initWizard() {
     if (!val) return;
     if (!customKeywords.includes(val) && !DEFAULT_KEYWORDS.includes(val)) {
       customKeywords.push(val);
-      dbAddCustom('keywords', val);
+      saveCustomLists();
     }
     if (!wz.keywords.includes(val)) wz.keywords.push(val);
     document.getElementById('wz-keyword-new').value = '';
@@ -772,43 +774,192 @@ async function init() {
   document.getElementById('splash').classList.add('fade-out');
   setTimeout(() => document.getElementById('splash').style.display = 'none', 400);
 
-  // Auth screen — tab switching
-  document.getElementById('tabPassword').addEventListener('click', () => {
-    document.getElementById('tabPassword').classList.add('active');
-    document.getElementById('tabMagic').classList.remove('active');
-    document.getElementById('panelPassword').classList.remove('hidden');
-    document.getElementById('panelMagic').classList.add('hidden');
-  });
-  document.getElementById('tabMagic').addEventListener('click', () => {
-    document.getElementById('tabMagic').classList.add('active');
-    document.getElementById('tabPassword').classList.remove('active');
-    document.getElementById('panelMagic').classList.remove('hidden');
-    document.getElementById('panelPassword').classList.add('hidden');
+  // ── AUTH VIEWS ──────────────────────────────
+  function showView(id) {
+    document.querySelectorAll('.auth-view').forEach(v => v.classList.add('hidden'));
+    document.getElementById(id).classList.remove('hidden');
+  }
+
+  // Navigation
+  document.getElementById('goSignUp').addEventListener('click',   () => showView('viewSignUp'));
+  document.getElementById('goSignIn').addEventListener('click',   () => showView('viewSignIn'));
+  document.getElementById('goForgot').addEventListener('click',   () => showView('viewForgot'));
+  document.getElementById('forgotBack').addEventListener('click', () => showView('viewSignIn'));
+  document.getElementById('tfa2Back').addEventListener('click',   () => showView('viewSignIn'));
+  document.getElementById('setup2FABack').addEventListener('click',() => showView('viewSignIn'));
+
+  // Show/hide password toggles
+  function togglePw(inputId, btnId) {
+    const inp = document.getElementById(inputId);
+    inp.type = inp.type === 'password' ? 'text' : 'password';
+  }
+  document.getElementById('siEye').addEventListener('click', () => togglePw('siPass'));
+  document.getElementById('suEye').addEventListener('click', () => togglePw('suPass'));
+
+  // Password strength meter
+  document.getElementById('suPass').addEventListener('input', e => {
+    const v = e.target.value;
+    const bar = document.getElementById('pwBar');
+    const lbl = document.getElementById('pwLabel');
+    let score = 0;
+    if (v.length >= 8)  score++;
+    if (v.length >= 12) score++;
+    if (/[A-Z]/.test(v)) score++;
+    if (/[0-9]/.test(v)) score++;
+    if (/[^A-Za-z0-9]/.test(v)) score++;
+    const levels = [
+      { w:'0%',   bg:'transparent', t:'' },
+      { w:'25%',  bg:'#ef4444', t:'Weak' },
+      { w:'50%',  bg:'#f59e0b', t:'Fair' },
+      { w:'75%',  bg:'#3b82f6', t:'Good' },
+      { w:'100%', bg:'#10b981', t:'Strong' },
+    ];
+    const l = levels[Math.min(score, 4)];
+    bar.style.width = l.w; bar.style.background = l.bg;
+    lbl.textContent = l.t; lbl.style.color = l.bg;
   });
 
-  // Email + password
-  document.getElementById('authEmailBtn').addEventListener('click', () => {
-    const email = document.getElementById('authEmail').value.trim();
-    const pass  = document.getElementById('authPass').value.trim();
-    if (!email || !pass) { showToast('Enter email and password'); return; }
-    signInWithEmail(email, pass);
+  // Sign In
+  document.getElementById('siBtn').addEventListener('click', async () => {
+    const email = document.getElementById('siEmail').value.trim();
+    const pass  = document.getElementById('siPass').value;
+    const err   = document.getElementById('siError');
+    err.classList.add('hidden');
+    if (!email || !pass) { err.textContent = 'Please fill in all fields'; err.classList.remove('hidden'); return; }
+    document.getElementById('siBtnText').textContent = 'Signing in…';
+    document.getElementById('siSpinner').classList.remove('hidden');
+    document.getElementById('siBtn').disabled = true;
+
+    const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
+
+    document.getElementById('siBtnText').textContent = 'Sign In';
+    document.getElementById('siSpinner').classList.add('hidden');
+    document.getElementById('siBtn').disabled = false;
+
+    if (error) {
+      err.textContent = error.message === 'Invalid login credentials'
+        ? 'Incorrect email or password' : error.message;
+      err.classList.remove('hidden');
+      return;
+    }
+
+    // Check if 2FA is required
+    if (data?.session === null && data?.user === null) {
+      // MFA challenge needed — this is handled by onAuthStateChange
+    }
   });
-  document.getElementById('authPass').addEventListener('keydown', e => {
-    if (e.key === 'Enter') document.getElementById('authEmailBtn').click();
+  document.getElementById('siPass').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('siBtn').click();
   });
 
-  // Magic link
-  document.getElementById('authMagicBtn').addEventListener('click', async () => {
-    const email = document.getElementById('authMagicEmail').value.trim();
-    if (!email) { showToast('Enter your email address'); return; }
-    const { error } = await sb.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: window.location.href }
+  // Sign Up
+  document.getElementById('suBtn').addEventListener('click', async () => {
+    const email   = document.getElementById('suEmail').value.trim();
+    const pass    = document.getElementById('suPass').value;
+    const confirm = document.getElementById('suConfirm').value;
+    const err     = document.getElementById('suError');
+    err.classList.add('hidden');
+    if (!email || !pass) { err.textContent = 'Please fill in all fields'; err.classList.remove('hidden'); return; }
+    if (pass.length < 8)  { err.textContent = 'Password must be at least 8 characters'; err.classList.remove('hidden'); return; }
+    if (pass !== confirm) { err.textContent = 'Passwords do not match'; err.classList.remove('hidden'); return; }
+
+    document.getElementById('suBtnText').textContent = 'Creating account…';
+    document.getElementById('suSpinner').classList.remove('hidden');
+    document.getElementById('suBtn').disabled = true;
+
+    const { error } = await sb.auth.signUp({ email, password: pass });
+
+    document.getElementById('suBtnText').textContent = 'Create Account';
+    document.getElementById('suSpinner').classList.add('hidden');
+    document.getElementById('suBtn').disabled = false;
+
+    if (error) { err.textContent = error.message; err.classList.remove('hidden'); return; }
+    showToast('Account created! Check your email to confirm, then sign in.');
+    showView('viewSignIn');
+  });
+
+  // Forgot password
+  document.getElementById('fpBtn').addEventListener('click', async () => {
+    const email = document.getElementById('fpEmail').value.trim();
+    const err   = document.getElementById('fpError');
+    const suc   = document.getElementById('fpSuccess');
+    err.classList.add('hidden'); suc.classList.add('hidden');
+    if (!email) { err.textContent = 'Enter your email'; err.classList.remove('hidden'); return; }
+
+    document.getElementById('fpBtnText').textContent = 'Sending…';
+    document.getElementById('fpSpinner').classList.remove('hidden');
+    document.getElementById('fpBtn').disabled = true;
+
+    const { error } = await sb.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.href
     });
-    if (error) { showToast(error.message); return; }
-    document.getElementById('magicSent').classList.remove('hidden');
-    document.getElementById('authMagicBtn').disabled = true;
-    document.getElementById('authMagicBtn').textContent = 'Sent!';
+
+    document.getElementById('fpBtnText').textContent = 'Send Reset Link';
+    document.getElementById('fpSpinner').classList.add('hidden');
+    document.getElementById('fpBtn').disabled = false;
+
+    if (error) { err.textContent = error.message; err.classList.remove('hidden'); return; }
+    suc.classList.remove('hidden');
+  });
+
+  // OTP boxes — auto-advance and auto-submit
+  const otpBoxes = document.querySelectorAll('.otp-box');
+  otpBoxes.forEach((box, i) => {
+    box.addEventListener('input', e => {
+      const v = e.target.value.replace(/\D/g,'');
+      e.target.value = v;
+      if (v && i < otpBoxes.length - 1) otpBoxes[i+1].focus();
+      if (i === otpBoxes.length - 1 && v) document.getElementById('tfaBtn').click();
+    });
+    box.addEventListener('keydown', e => {
+      if (e.key === 'Backspace' && !box.value && i > 0) otpBoxes[i-1].focus();
+    });
+    box.addEventListener('paste', e => {
+      e.preventDefault();
+      const text = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g,'');
+      otpBoxes.forEach((b, j) => { b.value = text[j] || ''; });
+      if (text.length >= 6) document.getElementById('tfaBtn').click();
+    });
+  });
+
+  // 2FA verify
+  document.getElementById('tfaBtn').addEventListener('click', async () => {
+    const code = [...otpBoxes].map(b => b.value).join('');
+    const err  = document.getElementById('tfaError');
+    err.classList.add('hidden');
+    if (code.length < 6) { err.textContent = 'Enter the 6-digit code'; err.classList.remove('hidden'); return; }
+
+    document.getElementById('tfaBtnText').textContent = 'Verifying…';
+    document.getElementById('tfaSpinner').classList.remove('hidden');
+    document.getElementById('tfaBtn').disabled = true;
+
+    const { data, error } = await sb.auth.mfa.challengeAndVerify({
+      factorId: window._mfaFactorId,
+      code,
+    });
+
+    document.getElementById('tfaBtnText').textContent = 'Verify';
+    document.getElementById('tfaSpinner').classList.add('hidden');
+    document.getElementById('tfaBtn').disabled = false;
+
+    if (error) { err.textContent = 'Incorrect code — try again'; err.classList.remove('hidden'); return; }
+    // Auth state change will fire and call showApp
+  });
+
+  // Setup 2FA (from account modal)
+  document.getElementById('setup2FABtn').addEventListener('click', async () => {
+    const code  = document.getElementById('setup2FACode').value.trim();
+    const err   = document.getElementById('setup2FAError');
+    err.classList.add('hidden');
+    if (!code || code.length < 6) { err.textContent = 'Enter the 6-digit code'; err.classList.remove('hidden'); return; }
+
+    const { data, error } = await sb.auth.mfa.challengeAndVerify({
+      factorId: window._enrollFactorId,
+      code,
+    });
+    if (error) { err.textContent = error.message; err.classList.remove('hidden'); return; }
+    showToast('✓ Two-factor authentication enabled');
+    document.getElementById('setupModal').classList.add('hidden');
   });
 
   // Check if already logged in (e.g. OAuth redirect back)
@@ -889,6 +1040,24 @@ async function init() {
   });
   document.getElementById('saveSetupBtn').addEventListener('click', saveSetup);
   document.getElementById('signOutBtn').addEventListener('click', signOut);
+  document.getElementById('setup2FAModalBtn').addEventListener('click', async () => {
+    document.getElementById('setupModal').classList.add('hidden');
+    // Enroll TOTP factor
+    const { data, error } = await sb.auth.mfa.enroll({ factorType: 'totp', issuer: 'AssetTrack' });
+    if (error) { showToast('2FA setup failed: ' + error.message); return; }
+    window._enrollFactorId = data.id;
+    // Show QR code
+    const qrContainer = document.getElementById('qrCodeContainer');
+    qrContainer.innerHTML = `<img src="${data.totp.qr_code}" style="width:160px;height:160px" />`;
+    document.getElementById('totpSecret').textContent = 'Manual code: ' + data.totp.secret;
+    document.getElementById('setup2FACode').value = '';
+    document.getElementById('setup2FAError').classList.add('hidden');
+    // Show the setup 2FA view in auth screen
+    document.getElementById('authScreen').classList.remove('hidden');
+    document.getElementById('app').classList.add('hidden');
+    document.querySelectorAll('.auth-view').forEach(v => v.classList.add('hidden'));
+    document.getElementById('viewSetup2FA').classList.remove('hidden');
+  });
 
   // Service worker
   if ('serviceWorker' in navigator) {

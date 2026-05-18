@@ -32,41 +32,139 @@
   <!-- AUTH SCREEN -->
   <div id="authScreen" class="hidden">
     <div class="auth-wrap">
+
+      <!-- LOGO -->
       <div class="auth-logo">
-        <svg width="48" height="48" viewBox="0 0 56 56" fill="none">
-          <rect width="56" height="56" rx="16" fill="#00e5ff" fill-opacity="0.12"/>
-          <path d="M14 20h4v16h-4zM20 16h4v20h-4zM26 22h4v14h-4zM32 18h4v18h-4zM38 20h4v16h-4z" fill="#00e5ff"/>
-        </svg>
+        <div class="auth-logo-icon">
+          <svg width="36" height="36" viewBox="0 0 56 56" fill="none">
+            <path d="M14 20h4v16h-4zM20 16h4v20h-4zM26 22h4v14h-4zM32 18h4v18h-4zM38 20h4v16h-4z" fill="#00e5ff"/>
+          </svg>
+        </div>
         <h1>AssetTrack</h1>
-        <p>Sign in to manage your inventory</p>
       </div>
 
-      <!-- TAB TOGGLE -->
-      <div class="auth-tabs">
-        <button class="auth-tab active" id="tabPassword">Password</button>
-        <button class="auth-tab" id="tabMagic">Magic Link</button>
+      <!-- VIEW: SIGN IN -->
+      <div class="auth-view" id="viewSignIn">
+        <h2 class="auth-heading">Welcome back</h2>
+        <p class="auth-sub">Sign in to your inventory</p>
+        <div class="auth-field">
+          <label>Email</label>
+          <input type="email" id="siEmail" placeholder="you@example.com" class="auth-input" autocomplete="email" />
+        </div>
+        <div class="auth-field">
+          <label>Password</label>
+          <div class="auth-input-wrap">
+            <input type="password" id="siPass" placeholder="••••••••" class="auth-input" autocomplete="current-password" />
+            <button class="auth-eye" id="siEye" tabindex="-1">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+        <div id="siError" class="auth-error hidden"></div>
+        <button class="auth-btn-primary" id="siBtn">
+          <span id="siBtnText">Sign In</span>
+          <div class="auth-spinner hidden" id="siSpinner"></div>
+        </button>
+        <div class="auth-links">
+          <button class="auth-link" id="goForgot">Forgot password?</button>
+          <button class="auth-link" id="goSignUp">Create account</button>
+        </div>
       </div>
 
-      <!-- PASSWORD PANEL -->
-      <div id="panelPassword">
-        <div style="display:flex;flex-direction:column;gap:10px">
-          <input type="email" id="authEmail" placeholder="Email address" class="auth-input" autocomplete="email" />
-          <input type="password" id="authPass" placeholder="Password (min 6 chars)" class="auth-input" autocomplete="current-password" />
-          <button class="auth-btn primary" id="authEmailBtn">Sign In / Create Account</button>
+      <!-- VIEW: SIGN UP -->
+      <div class="auth-view hidden" id="viewSignUp">
+        <h2 class="auth-heading">Create account</h2>
+        <p class="auth-sub">Free — your data stays private</p>
+        <div class="auth-field">
+          <label>Email</label>
+          <input type="email" id="suEmail" placeholder="you@example.com" class="auth-input" autocomplete="email" />
         </div>
-        <p class="auth-note" style="margin-top:10px">New here? Just enter an email and password to create your account.</p>
+        <div class="auth-field">
+          <label>Password</label>
+          <div class="auth-input-wrap">
+            <input type="password" id="suPass" placeholder="Min 8 characters" class="auth-input" autocomplete="new-password" />
+            <button class="auth-eye" id="suEye" tabindex="-1">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+          <div class="pw-strength" id="pwStrength">
+            <div class="pw-bar" id="pwBar"></div>
+          </div>
+          <span class="pw-label" id="pwLabel"></span>
+        </div>
+        <div class="auth-field">
+          <label>Confirm Password</label>
+          <input type="password" id="suConfirm" placeholder="••••••••" class="auth-input" autocomplete="new-password" />
+        </div>
+        <div id="suError" class="auth-error hidden"></div>
+        <button class="auth-btn-primary" id="suBtn">
+          <span id="suBtnText">Create Account</span>
+          <div class="auth-spinner hidden" id="suSpinner"></div>
+        </button>
+        <div class="auth-links">
+          <button class="auth-link" id="goSignIn">Already have an account? Sign in</button>
+        </div>
       </div>
 
-      <!-- MAGIC LINK PANEL -->
-      <div id="panelMagic" class="hidden">
-        <div style="display:flex;flex-direction:column;gap:10px">
-          <input type="email" id="authMagicEmail" placeholder="Email address" class="auth-input" autocomplete="email" />
-          <button class="auth-btn primary" id="authMagicBtn">Send Magic Link</button>
+      <!-- VIEW: FORGOT PASSWORD -->
+      <div class="auth-view hidden" id="viewForgot">
+        <button class="auth-back" id="forgotBack">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+          Back
+        </button>
+        <h2 class="auth-heading">Reset password</h2>
+        <p class="auth-sub">We'll send a reset link to your email</p>
+        <div class="auth-field">
+          <label>Email</label>
+          <input type="email" id="fpEmail" placeholder="you@example.com" class="auth-input" autocomplete="email" />
         </div>
-        <p class="auth-note" style="margin-top:10px">We'll email you a link — click it and you're in. No password needed.</p>
-        <div id="magicSent" class="hidden" style="margin-top:12px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.2);border-radius:var(--radius-sm);padding:12px;font-size:13px;color:var(--success);text-align:center">
-          ✓ Magic link sent! Check your email.
+        <div id="fpError" class="auth-error hidden"></div>
+        <div id="fpSuccess" class="auth-success hidden">✓ Reset link sent — check your email</div>
+        <button class="auth-btn-primary" id="fpBtn">
+          <span id="fpBtnText">Send Reset Link</span>
+          <div class="auth-spinner hidden" id="fpSpinner"></div>
+        </button>
+      </div>
+
+      <!-- VIEW: 2FA CODE ENTRY -->
+      <div class="auth-view hidden" id="view2FA">
+        <div class="auth-2fa-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
         </div>
+        <h2 class="auth-heading">Two-Factor Auth</h2>
+        <p class="auth-sub">Enter the 6-digit code from your authenticator app</p>
+        <div class="auth-otp-row" id="otpRow">
+          <input class="otp-box" maxlength="1" type="text" inputmode="numeric" pattern="[0-9]" />
+          <input class="otp-box" maxlength="1" type="text" inputmode="numeric" pattern="[0-9]" />
+          <input class="otp-box" maxlength="1" type="text" inputmode="numeric" pattern="[0-9]" />
+          <input class="otp-box" maxlength="1" type="text" inputmode="numeric" pattern="[0-9]" />
+          <input class="otp-box" maxlength="1" type="text" inputmode="numeric" pattern="[0-9]" />
+          <input class="otp-box" maxlength="1" type="text" inputmode="numeric" pattern="[0-9]" />
+        </div>
+        <div id="tfaError" class="auth-error hidden"></div>
+        <button class="auth-btn-primary" id="tfaBtn">
+          <span id="tfaBtnText">Verify</span>
+          <div class="auth-spinner hidden" id="tfaSpinner"></div>
+        </button>
+        <button class="auth-link" id="tfa2Back" style="margin-top:12px">← Back to sign in</button>
+      </div>
+
+      <!-- VIEW: SETUP 2FA -->
+      <div class="auth-view hidden" id="viewSetup2FA">
+        <button class="auth-back" id="setup2FABack">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+          Back
+        </button>
+        <h2 class="auth-heading">Set up 2FA</h2>
+        <p class="auth-sub">Scan this QR code with Google Authenticator, Authy, or any authenticator app</p>
+        <div id="qrCodeContainer" style="background:#fff;border-radius:12px;padding:16px;display:flex;align-items:center;justify-content:center;margin:8px 0"></div>
+        <p class="auth-sub" style="font-size:11px;word-break:break-all" id="totpSecret"></p>
+        <div class="auth-field" style="margin-top:8px">
+          <label>Enter the 6-digit code to confirm</label>
+          <input type="text" id="setup2FACode" placeholder="123456" class="auth-input" inputmode="numeric" maxlength="6" />
+        </div>
+        <div id="setup2FAError" class="auth-error hidden"></div>
+        <button class="auth-btn-primary" id="setup2FABtn">Activate 2FA</button>
       </div>
 
     </div>
@@ -368,6 +466,10 @@
           <div class="value" id="userEmailDisplay"></div>
         </div>
         <p class="setup-info">Your inventory is stored securely in Supabase and syncs across all your devices automatically.</p>
+        <button class="btn-accent full" id="setup2FAModalBtn" style="margin-bottom:8px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:8px"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+          Set Up Two-Factor Auth
+        </button>
         <button class="btn-outline full danger" id="signOutBtn">Sign Out</button>
         <button class="btn-ghost full" id="saveSetupBtn" style="margin-top:8px">Close</button>
       </div>
