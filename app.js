@@ -61,10 +61,15 @@ async function signInWithEmail(email, password) {
 }
 
 async function signOut() {
+  // Close all modals first
+  document.querySelectorAll('.modal').forEach(m => m.classList.add('hidden'));
   await sb.auth.signOut();
   state.user = null;
   state.items = [];
   state.borrows = [];
+  // Reset to sign in view
+  document.querySelectorAll('.auth-view').forEach(v => v.classList.add('hidden'));
+  document.getElementById('viewSignIn').classList.remove('hidden');
   showAuthScreen();
 }
 
@@ -82,9 +87,179 @@ async function showApp(user) {
   await loadAllData();
   renderInventory();
   renderBorrows();
+  // Show home screen first
+  switchTab('home');
+  renderHome();
 }
 
-// ── SUPABASE DATA ─────────────────────────────
+// ── HOME SCREEN ───────────────────────────────
+function renderHome() {
+  const user = state.user;
+  const name = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'there';
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+
+  const totalItems    = state.items.length;
+  const totalQty      = state.items.reduce((s, i) => s + (parseInt(i.qty) || 0), 0);
+  const lowStock      = state.items.filter(i => i.minstock && parseInt(i.qty) <= parseInt(i.minstock)).length;
+  const activeBorrows = state.borrows.filter(b => !b.returned).length;
+  const overdue       = state.borrows.filter(b => {
+    if (b.returned) return false;
+    const due = b.due_date || b.dueDate;
+    return due && new Date(due) < new Date();
+  }).length;
+
+  // Category breakdown
+  const catMap = {};
+  state.items.forEach(i => {
+    const c = i.category || 'Uncategorised';
+    catMap[c] = (catMap[c] || 0) + 1;
+  });
+  const topCats = Object.entries(catMap).sort((a,b) => b[1]-a[1]).slice(0,4);
+
+  // Recent items
+  const recent = [...state.items].slice(0, 4);
+
+  // Active borrows preview
+  const activeBorrowList = state.borrows.filter(b => !b.returned).slice(0, 3);
+
+  document.getElementById('homeContent').innerHTML = `
+    <div class="home-wrap">
+
+      <!-- GREETING -->
+      <div class="home-greeting">
+        <div class="home-greeting-text">
+          <p class="home-sub">${greeting}</p>
+          <h2 class="home-name">${esc(name)}</h2>
+        </div>
+        <div class="home-date">${new Date().toLocaleDateString('en-AU', { weekday:'short', day:'numeric', month:'short' })}</div>
+      </div>
+
+      <!-- STAT CARDS -->
+      <div class="home-stats">
+        <div class="stat-card" onclick="switchTab('inventory')">
+          <div class="stat-icon blue">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-4 0v2M8 7V5a2 2 0 0 0-4 0v2"/></svg>
+          </div>
+          <div class="stat-num">${totalItems}</div>
+          <div class="stat-label">Item Types</div>
+        </div>
+        <div class="stat-card" onclick="switchTab('inventory')">
+          <div class="stat-icon cyan">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+          </div>
+          <div class="stat-num">${totalQty}</div>
+          <div class="stat-label">Total Stock</div>
+        </div>
+        <div class="stat-card ${lowStock > 0 ? 'warn' : ''}" onclick="switchTab('inventory')">
+          <div class="stat-icon ${lowStock > 0 ? 'orange' : 'green'}">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          </div>
+          <div class="stat-num">${lowStock}</div>
+          <div class="stat-label">Low Stock</div>
+        </div>
+        <div class="stat-card ${overdue > 0 ? 'danger' : ''}" onclick="switchTab('borrow')">
+          <div class="stat-icon ${overdue > 0 ? 'red' : 'purple'}">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <div class="stat-num">${activeBorrows}</div>
+          <div class="stat-label">${overdue > 0 ? `${overdue} Overdue` : 'On Loan'}</div>
+        </div>
+      </div>
+
+      ${lowStock > 0 ? `
+      <!-- LOW STOCK ALERT -->
+      <div class="home-alert" onclick="switchTab('inventory')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span>${lowStock} item${lowStock > 1 ? 's' : ''} running low on stock — tap to view</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
+      </div>` : ''}
+
+      ${overdue > 0 ? `
+      <!-- OVERDUE ALERT -->
+      <div class="home-alert danger" onclick="switchTab('borrow')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span>${overdue} borrow${overdue > 1 ? 's are' : ' is'} overdue</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
+      </div>` : ''}
+
+      <!-- QUICK ACTIONS -->
+      <div class="home-section-label">Quick Actions</div>
+      <div class="home-actions">
+        <button class="home-action-btn" onclick="switchTab('add')">
+          <div class="ha-icon cyan"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg></div>
+          <span>Add Item</span>
+        </button>
+        <button class="home-action-btn" onclick="switchTab('scan')">
+          <div class="ha-icon blue"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="8" x2="4" y2="16"/><line x1="8" y1="6" x2="8" y2="18"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="16" y1="6" x2="16" y2="18"/><line x1="20" y1="8" x2="20" y2="16"/></svg></div>
+          <span>Scan</span>
+        </button>
+        <button class="home-action-btn" onclick="switchTab('borrow')">
+          <div class="ha-icon purple"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+          <span>Borrow</span>
+        </button>
+        <button class="home-action-btn" onclick="switchTab('inventory')">
+          <div class="ha-icon green"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-4 0v2M8 7V5a2 2 0 0 0-4 0v2"/></svg></div>
+          <span>Inventory</span>
+        </button>
+      </div>
+
+      ${topCats.length > 0 ? `
+      <!-- CATEGORIES -->
+      <div class="home-section-label">By Category</div>
+      <div class="home-cats">
+        ${topCats.map(([cat, count]) => `
+          <div class="home-cat-row" onclick="switchTab('inventory')">
+            <span class="home-cat-name">${esc(cat)}</span>
+            <div class="home-cat-bar-wrap">
+              <div class="home-cat-bar" style="width:${Math.round((count/totalItems)*100)}%"></div>
+            </div>
+            <span class="home-cat-count">${count}</span>
+          </div>
+        `).join('')}
+      </div>` : ''}
+
+      ${activeBorrowList.length > 0 ? `
+      <!-- ACTIVE BORROWS -->
+      <div class="home-section-label">Currently On Loan</div>
+      <div class="item-list" style="padding:0 0 8px">
+        ${activeBorrowList.map(b => {
+          const due = b.due_date || b.dueDate || '';
+          const overdue = due && new Date(due) < new Date();
+          return `<div class="borrow-card ${overdue ? 'overdue-card' : ''}">
+            <div class="borrow-item">${esc(b.item_name || b.itemName || '')}</div>
+            <div class="borrow-who">Borrowed by: ${esc(b.borrower)}</div>
+            ${due ? `<div class="borrow-date ${overdue ? 'borrow-overdue' : ''}">Due: ${due}${overdue ? ' ⚠ OVERDUE' : ''}</div>` : ''}
+          </div>`;
+        }).join('')}
+      </div>` : ''}
+
+      ${recent.length > 0 ? `
+      <!-- RECENT ITEMS -->
+      <div class="home-section-label">Recent Items</div>
+      <div class="item-list" style="padding:0 0 32px">
+        ${recent.map(item => `
+          <div class="item-card" onclick="showItemDetail('${item.id}')">
+            <div class="item-card-top">
+              <span class="item-name">${esc(item.name)}</span>
+              <span class="item-qty">Qty: ${item.qty ?? '?'}</span>
+            </div>
+            <div class="item-meta">
+              ${item.category ? `<span class="item-cat">${esc(item.category)}</span>` : ''}
+              ${item.location ? `<span class="item-tag" style="color:var(--text3);font-size:11px">📍 ${esc(item.location)}</span>` : ''}
+            </div>
+          </div>
+        `).join('')}
+      </div>` : `
+      <div class="home-empty">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-4 0v2M8 7V5a2 2 0 0 0-4 0v2"/></svg>
+        <p>No items yet</p>
+        <button class="btn-primary" onclick="switchTab('add')" style="margin-top:12px">Add Your First Item</button>
+      </div>`}
+
+    </div>
+  `;
+}
 function generateId() {
   const ts = Date.now().toString(36).toUpperCase();
   const rnd = Math.random().toString(36).slice(2,5).toUpperCase();
@@ -180,6 +355,7 @@ function switchTab(tabName) {
   if (tabName !== 'scan') stopScan('main');
   if (tabName !== 'add') stopScan('mini');
   if (tabName !== 'borrow') stopScan('borrow');
+  if (tabName === 'home') renderHome();
 }
 
 // ── INVENTORY RENDER ──────────────────────────

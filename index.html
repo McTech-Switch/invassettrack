@@ -193,7 +193,11 @@
 
     <!-- NAV TABS -->
     <nav class="tab-bar">
-      <button class="tab active" data-tab="inventory">
+      <button class="tab active" data-tab="home">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        <span>Home</span>
+      </button>
+      <button class="tab" data-tab="inventory">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
         <span>Inventory</span>
       </button>
@@ -214,8 +218,13 @@
     <!-- PAGES -->
     <main class="page-container">
 
+      <!-- HOME PAGE -->
+      <section class="page active" id="page-home">
+        <div id="homeContent" style="overflow-y:auto;height:100%"></div>
+      </section>
+
       <!-- INVENTORY PAGE -->
-      <section class="page active" id="page-inventory">
+      <section class="page" id="page-inventory">
         <div class="search-bar-wrap">
           <div class="search-bar">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
