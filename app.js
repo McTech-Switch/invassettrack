@@ -82,17 +82,27 @@ async function showApp(user) {
   state.user = user;
   document.getElementById('authScreen').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
-  document.getElementById('userEmail').textContent = user.email || user.user_metadata?.full_name || 'Signed in';
-  // Sync display_name from Supabase metadata → localStorage
-  const metaName = user.user_metadata?.display_name;
-  if (metaName) {
-    localStorage.setItem('at_display_name', metaName);
-  }
+  document.getElementById('userEmail').textContent = user.email || 'Signed in';
+
+  // Load display_name from profiles table, cache in localStorage
+  try {
+    const { data: profile } = await sb
+      .from('profiles')
+      .select('display_name')
+      .eq('id', user.id)
+      .single();
+    if (profile?.display_name) {
+      localStorage.setItem('at_display_name', profile.display_name);
+    } else {
+      const fallback = user.email?.split('@')[0] || '';
+      if (fallback) localStorage.setItem('at_display_name', fallback);
+    }
+  } catch (e) { /* offline — use localStorage cache */ }
+
   await loadCustomLists();
   await loadAllData();
   renderInventory();
   renderBorrows();
-  // Show home screen first
   switchTab('home');
   renderHome();
 }
@@ -885,33 +895,35 @@ function renderBorrows() {
 function openSetup() {
   document.getElementById('setupModal').classList.remove('hidden');
   document.getElementById('userEmailDisplay').textContent = state.user?.email || '';
-  // Prefer Supabase metadata, fall back to localStorage
-  const metaName = state.user?.user_metadata?.display_name;
-  const saved = metaName || localStorage.getItem('at_display_name') || '';
+  // Read from localStorage (already synced from profiles on login)
+  const saved = localStorage.getItem('at_display_name') || '';
   const inp = document.getElementById('displayNameInput');
   if (inp) inp.value = saved;
 }
 
 async function saveSetup() {
   const inp = document.getElementById('displayNameInput');
-  if (inp) {
-    const val = inp.value.trim();
-    // Save to Supabase user_metadata
+  const val = inp ? inp.value.trim() : '';
+
+  // 1. Upsert into profiles table
+  if (state.user?.id) {
     try {
-      const { data, error } = await sb.auth.updateUser({
-        data: { display_name: val }
-      });
-      if (!error && data?.user) {
-        state.user = data.user;
-      }
-    } catch(e) { /* silently fall through */ }
-    // Also keep localStorage as offline cache
-    if (val) {
-      localStorage.setItem('at_display_name', val);
-    } else {
-      localStorage.removeItem('at_display_name');
+      const { error } = await sb
+        .from('profiles')
+        .upsert({ id: state.user.id, display_name: val, updated_at: new Date().toISOString() });
+      if (error) showToast('Could not save name: ' + error.message);
+    } catch(e) {
+      showToast('Save failed — check your connection');
     }
   }
+
+  // 2. Always update localStorage cache
+  if (val) {
+    localStorage.setItem('at_display_name', val);
+  } else {
+    localStorage.removeItem('at_display_name');
+  }
+
   document.getElementById('setupModal').classList.add('hidden');
   renderHome();
 }
