@@ -912,20 +912,23 @@ async function saveSetup() {
         .from('profiles')
         .upsert({ id: state.user.id, display_name: val, updated_at: new Date().toISOString() });
       if (error) showToast('Could not save name: ' + error.message);
+      else showToast('✓ Name saved');
     } catch(e) {
       showToast('Save failed — check your connection');
     }
   }
 
-  // 2. Always update localStorage cache
+  // 2. Update localStorage cache
   if (val) {
     localStorage.setItem('at_display_name', val);
   } else {
     localStorage.removeItem('at_display_name');
   }
 
+  // 3. Close modal and update the title in-place — no page refresh
   document.getElementById('setupModal').classList.add('hidden');
-  renderHome();
+  const titleEl = document.querySelector('.lg-title');
+  if (titleEl) titleEl.textContent = val || (state.user?.email?.split('@')[0]) || 'there';
 }
 
 // ── UTIL ──────────────────────────────────────
