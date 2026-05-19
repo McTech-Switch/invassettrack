@@ -83,6 +83,11 @@ async function showApp(user) {
   document.getElementById('authScreen').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
   document.getElementById('userEmail').textContent = user.email || user.user_metadata?.full_name || 'Signed in';
+  // Sync display_name from Supabase metadata → localStorage
+  const metaName = user.user_metadata?.display_name;
+  if (metaName) {
+    localStorage.setItem('at_display_name', metaName);
+  }
   await loadCustomLists();
   await loadAllData();
   renderInventory();
@@ -242,13 +247,71 @@ function showToast(msg, duration = 2200) {
 }
 
 // ── TABS ──────────────────────────────────────
-function switchTab(tabName) {
+const panelTitles = { inventory: 'Inventory', scan: 'Scan', add: 'Add Item', borrow: 'Borrow / Return' };
+
+function openPanel(tabName) {
+  const panel    = document.getElementById('lg-panel');
+  const backdrop = document.getElementById('lg-panel-backdrop');
+  const title    = document.getElementById('lg-panel-title');
+  const content  = document.getElementById('lg-panel-content');
+
+  title.textContent = panelTitles[tabName] || tabName;
+
+  // Clone the page section into panel content
+  const page = document.getElementById('page-' + tabName);
+  if (!page) return;
+  content.innerHTML = '';
+  // We move the live section into the panel so all existing JS hooks still work
+  content.appendChild(page);
+  page.classList.add('active');
+
+  panel.classList.add('open');
+  backdrop.classList.add('open');
+  panel.dataset.tab = tabName;
+
+  // Mark tab active
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
-  document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === `page-${tabName}`));
-  if (tabName !== 'scan') stopScan('main');
-  if (tabName !== 'add') stopScan('mini');
-  if (tabName !== 'borrow') stopScan('borrow');
-  if (tabName === 'home') renderHome();
+}
+
+function closePanel() {
+  const panel    = document.getElementById('lg-panel');
+  const backdrop = document.getElementById('lg-panel-backdrop');
+  const content  = document.getElementById('lg-panel-content');
+  const tabName  = panel.dataset.tab;
+
+  panel.classList.remove('open');
+  backdrop.classList.remove('open');
+
+  // Move the page section back to page-container so it is available next time
+  if (tabName) {
+    const page = content.querySelector('#page-' + tabName);
+    if (page) {
+      const container = document.querySelector('.page-container');
+      container.appendChild(page);
+      page.classList.remove('active');
+    }
+    stopScan('main');
+    stopScan('mini');
+    stopScan('borrow');
+  }
+
+  panel.dataset.tab = '';
+  // Restore home tab as active
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'home'));
+}
+
+function switchTab(tabName) {
+  if (tabName === 'home') {
+    closePanel();
+    document.querySelectorAll('.page').forEach(p => {
+      // ensure home page is active in page-container
+      if (p.id === 'page-home') { p.classList.add('active'); }
+    });
+    renderHome();
+    return;
+  }
+  // For all other tabs, open as liquid glass panel
+  openPanel(tabName);
 }
 
 // ── INVENTORY RENDER ──────────────────────────
@@ -821,16 +884,28 @@ function renderBorrows() {
 // ── ACCOUNT ───────────────────────────────────
 function openSetup() {
   document.getElementById('setupModal').classList.remove('hidden');
-  document.getElementById('userEmailDisplay').textContent = state.user?.email || state.user?.user_metadata?.full_name || '';
-  const saved = localStorage.getItem('at_display_name') || '';
+  document.getElementById('userEmailDisplay').textContent = state.user?.email || '';
+  // Prefer Supabase metadata, fall back to localStorage
+  const metaName = state.user?.user_metadata?.display_name;
+  const saved = metaName || localStorage.getItem('at_display_name') || '';
   const inp = document.getElementById('displayNameInput');
   if (inp) inp.value = saved;
 }
 
-function saveSetup() {
+async function saveSetup() {
   const inp = document.getElementById('displayNameInput');
   if (inp) {
     const val = inp.value.trim();
+    // Save to Supabase user_metadata
+    try {
+      const { data, error } = await sb.auth.updateUser({
+        data: { display_name: val }
+      });
+      if (!error && data?.user) {
+        state.user = data.user;
+      }
+    } catch(e) { /* silently fall through */ }
+    // Also keep localStorage as offline cache
     if (val) {
       localStorage.setItem('at_display_name', val);
     } else {
@@ -1122,6 +1197,10 @@ async function init() {
   });
   document.getElementById('saveSetupBtn').addEventListener('click', saveSetup);
   document.getElementById('signOutBtn').addEventListener('click', signOut);
+
+  // Liquid glass panel close
+  document.getElementById('lg-panel-close').addEventListener('click', closePanel);
+  document.getElementById('lg-panel-backdrop').addEventListener('click', closePanel);
   document.getElementById('setup2FAModalBtn').addEventListener('click', async () => {
     document.getElementById('setupModal').classList.add('hidden');
     // Enroll TOTP factor
