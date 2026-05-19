@@ -112,7 +112,7 @@ function renderHome() {
       <div class="lg-orb lg-orb3"></div>
       <div class="lg-center">
         <p class="lg-label">Welcome,</p>
-        <h1 class="lg-title">\${esc(name)}</h1>
+        <h1 class="lg-title">${esc(name)}</h1>
         <div class="lg-search-wrap">
           <div class="lg-search">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="lg-search-icon"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
@@ -137,11 +137,10 @@ function renderHome() {
             Borrows
           </button>
         </div>
-        \${(lowStock > 0 || overdue > 0) ? `
-        <div class="lg-alerts">
-          \${lowStock > 0 ? `<div class="lg-alert warn" onclick="switchTab('inventory')">⚠ \${lowStock} low stock</div>` : ''}
-          \${overdue > 0 ? `<div class="lg-alert danger" onclick="switchTab('borrow')">🔴 \${overdue} overdue</div>` : ''}
-        </div>` : ''}
+        ${(lowStock > 0 || overdue > 0) ? '<div class="lg-alerts">' +
+            (lowStock > 0 ? '<div class="lg-alert warn" onclick="switchTab(\'inventory\')">⚠ ' + lowStock + ' low stock</div>' : '') +
+            (overdue > 0  ? '<div class="lg-alert danger" onclick="switchTab(\'borrow\')">🔴 ' + overdue + ' overdue</div>'  : '') +
+          '</div>' : ''}
       </div>
     </div>
   `;
