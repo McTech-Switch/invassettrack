@@ -247,25 +247,34 @@
       <!-- SCAN PAGE -->
       <section class="page" id="page-scan">
         <div class="scan-wrap">
-          <div class="scan-header">
-            <h2>Barcode Scanner</h2>
-            <p>Point camera at a barcode to look up an item</p>
+
+          <!-- LEFT: camera -->
+          <div class="scan-left">
+            <div id="scannerRegion" style="display:none;width:100%;border-radius:var(--radius);overflow:hidden"></div>
+            <div class="scanner-box" id="scannerPlaceholder">
+              <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:13px">Press Start Camera</div>
+            </div>
+            <button class="btn-primary" id="startScanBtn" style="width:100%">Start Camera</button>
+            <button class="btn-ghost" id="stopScanBtn" style="display:none;width:100%">Stop Camera</button>
           </div>
-          <div id="scannerRegion" style="display:none;width:100%;max-width:340px;border-radius:var(--radius);overflow:hidden"></div>
-          <div class="scanner-box" id="scannerPlaceholder">
-            <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:13px">Press Start Camera</div>
-          </div>
-          <button class="btn-primary" id="startScanBtn">Start Camera</button>
-          <button class="btn-ghost" id="stopScanBtn" style="display:none">Stop Camera</button>
-          <p id="scanStatus" style="font-size:13px;color:var(--accent);text-align:center;min-height:20px;font-family:var(--mono)"></p>
-          <div id="scanResult" class="scan-result hidden"></div>
-          <div class="manual-lookup">
-            <p>Or enter barcode manually:</p>
-            <div class="input-row">
-              <input type="text" id="manualBarcode" placeholder="Enter barcode number…" />
-              <button class="btn-accent" id="manualLookupBtn">Look Up</button>
+
+          <!-- RIGHT: header, status, result, manual -->
+          <div class="scan-right">
+            <div class="scan-header">
+              <h2>Barcode Scanner</h2>
+              <p>Point camera at a barcode to look up an item</p>
+            </div>
+            <p id="scanStatus" style="font-size:13px;color:var(--accent);min-height:20px;font-family:var(--mono)"></p>
+            <div id="scanResult" class="scan-result hidden"></div>
+            <div class="manual-lookup">
+              <p>Or enter barcode manually:</p>
+              <div class="input-row">
+                <input type="text" id="manualBarcode" placeholder="Enter barcode number…" />
+                <button class="btn-accent" id="manualLookupBtn">Look Up</button>
+              </div>
             </div>
           </div>
+
         </div>
       </section>
 
