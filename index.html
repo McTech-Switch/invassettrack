@@ -474,13 +474,18 @@
           <div class="label">Signed in as</div>
           <div class="value" id="userEmailDisplay"></div>
         </div>
+        <div class="auth-field" style="margin-bottom:16px">
+          <label style="font-size:12px;color:var(--text2);margin-bottom:6px;display:block">Display Name</label>
+          <input type="text" id="displayNameInput" placeholder="How should we greet you?" class="auth-input" maxlength="40" />
+          <p style="font-size:11px;color:var(--text3);margin-top:4px">This name appears on your home screen</p>
+        </div>
         <p class="setup-info">Your inventory is stored securely in Supabase and syncs across all your devices automatically.</p>
         <button class="btn-accent full" id="setup2FAModalBtn" style="margin-bottom:8px">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:8px"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
           Set Up Two-Factor Auth
         </button>
         <button class="btn-outline full danger" id="signOutBtn">Sign Out</button>
-        <button class="btn-ghost full" id="saveSetupBtn" style="margin-top:8px">Close</button>
+        <button class="btn-ghost full" id="saveSetupBtn" style="margin-top:8px">Save &amp; Close</button>
       </div>
     </div>
   </div>
