@@ -1732,9 +1732,17 @@ body::before {
 }
 
 .auth-wrap,
-.modal-sheet,
-#lg-panel {
+.modal-sheet {
   position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(145deg, rgba(255,255,255,0.145), rgba(255,255,255,0.055) 42%, rgba(79,216,255,0.055)),
+    rgba(11,14,23,0.66);
+  border-color: var(--glass-border);
+  box-shadow: var(--shadow-glass);
+}
+/* #lg-panel must stay position:fixed — do not set relative here */
+#lg-panel {
   overflow: hidden;
   background:
     linear-gradient(145deg, rgba(255,255,255,0.145), rgba(255,255,255,0.055) 42%, rgba(79,216,255,0.055)),
