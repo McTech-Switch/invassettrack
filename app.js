@@ -607,13 +607,23 @@ function saveCustomLists() {
   localStorage.setItem('at_keywords',   JSON.stringify(customKeywords));
 }
 
-function openWizard() {
+let _wzScanTimer = null;
+
+function openWizard(skipScan = false) {
   // Reset state
   Object.assign(wz, { barcode:'', name:'', location:'', category:'', keywords:[], qty:1, minstock:0, supplier:'', notes:'', photo:'' });
-  wzGoTo(0);
   document.getElementById('wizardModal').classList.remove('hidden');
-  // Start scanner for step 0
-  setTimeout(() => startScan('mini'), 300);
+
+  if (skipScan) {
+    // Skip straight to name entry — no camera, no race condition
+    clearTimeout(_wzScanTimer);
+    wzGoTo(1);
+  } else {
+    wzGoTo(0);
+    // Delay scan start slightly to let the modal animate in
+    clearTimeout(_wzScanTimer);
+    _wzScanTimer = setTimeout(() => startScan('mini'), 300);
+  }
 }
 
 function closeWizard() {
@@ -683,14 +693,8 @@ async function wzSaveItem() {
 
 function initWizard() {
   // New Item button
-  document.getElementById('newItemBtn').addEventListener('click', openWizard);
-  document.getElementById('newItemManualBtn').addEventListener('click', () => {
-    openWizard();
-    setTimeout(() => {
-      stopScan('mini');
-      wzGoTo(1); // skip straight to name entry
-    }, 100);
-  });
+  document.getElementById('newItemBtn').addEventListener('click', () => openWizard(false));
+  document.getElementById('newItemManualBtn').addEventListener('click', () => openWizard(true));
 
   // Backdrop close
   document.getElementById('wizardBackdrop').addEventListener('click', closeWizard);
