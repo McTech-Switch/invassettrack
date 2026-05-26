@@ -39,9 +39,12 @@ function loadScript(src) {
 }
 
 async function loadLibraries() {
-  await loadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js');
+  // Load both scripts in parallel — html5-qrcode doesn't depend on supabase
+  await Promise.all([
+    loadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js'),
+    loadScript('https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js'),
+  ]);
   sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
-  await loadScript('https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js');
   state.zxing = typeof Html5Qrcode !== 'undefined';
 }
 
@@ -161,12 +164,12 @@ function renderHome() {
   `;
 }
 
-window.homeSearch = function(val) {
+window.homeSearch = debounce(function(val) {
   state.searchQuery = val;
   switchTab('inventory');
   const inv = document.getElementById('searchInput');
   if (inv) { inv.value = val; renderInventory(); }
-};
+}, 200);
 
 function generateId() {
   const ts = Date.now().toString(36).toUpperCase();
@@ -238,12 +241,6 @@ async function loadCustomLists() {
   customKeywords   = JSON.parse(localStorage.getItem('at_keywords')   || '[]');
 }
 
-function saveCustomLists() {
-  localStorage.setItem('at_locations',  JSON.stringify(customLocations));
-  localStorage.setItem('at_categories', JSON.stringify(customCategories));
-  localStorage.setItem('at_keywords',   JSON.stringify(customKeywords));
-}
-
 // ── TOAST ─────────────────────────────────────
 function showToast(msg, duration = 2200) {
   const el = document.getElementById('toast');
@@ -265,13 +262,29 @@ function openPanel(tabName) {
   const title    = document.getElementById('lg-panel-title');
   const content  = document.getElementById('lg-panel-content');
 
+  // FIX: Return any currently-displayed page back to the hidden container
+  // BEFORE clearing content — otherwise the element is destroyed permanently
+  const currentTab = panel.dataset.tab;
+  if (currentTab && currentTab !== tabName) {
+    const currentPage = content.querySelector('#page-' + currentTab);
+    if (currentPage) {
+      document.querySelector('.page-container').appendChild(currentPage);
+      currentPage.classList.remove('active');
+    }
+    stopScan('main');
+    stopScan('mini');
+    stopScan('borrow');
+  }
+
   title.textContent = panelTitles[tabName] || tabName;
 
-  // Clone the page section into panel content
   const page = document.getElementById('page-' + tabName);
   if (!page) return;
-  content.innerHTML = '';
-  // We move the live section into the panel so all existing JS hooks still work
+
+  // Safe to clear now — the previous page was returned to the container above
+  while (content.firstChild) content.removeChild(content.firstChild);
+
+  // Move the live section into the panel so all existing JS hooks still work
   content.appendChild(page);
   page.classList.add('active');
 
@@ -938,6 +951,15 @@ function esc(str) {
 }
 
 // ── INIT ──────────────────────────────────────
+// ── DEBOUNCE UTILITY ──────────────────────────
+function debounce(fn, ms) {
+  let timer;
+  return function(...args) {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn.apply(this, args), ms);
+  };
+}
+
 async function init() {
   // Show splash, load libraries in parallel
   await loadLibraries();
@@ -1156,11 +1178,11 @@ async function init() {
     tab.addEventListener('click', () => switchTab(tab.dataset.tab));
   });
 
-  // Search
-  document.getElementById('searchInput').addEventListener('input', e => {
+  // Search — debounced to avoid re-rendering on every keystroke
+  document.getElementById('searchInput').addEventListener('input', debounce(e => {
     state.searchQuery = e.target.value;
     renderInventory();
-  });
+  }, 150));
 
   // Filter chips
   document.querySelectorAll('.chip').forEach(chip => {

@@ -23,7 +23,7 @@
   --glass: rgba(255,255,255,0.07);
   --glass-hi: rgba(255,255,255,0.13);
   --glass-border: rgba(255,255,255,0.15);
-  --glass-blur: blur(40px) saturate(180%);
+  --glass-blur: blur(20px) saturate(160%);
   --header-h: 56px;
   --nav-h: 64px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -49,7 +49,7 @@ body::before {
     radial-gradient(ellipse 80% 60% at 20% 10%, rgba(0,100,180,0.35) 0%, transparent 60%),
     radial-gradient(ellipse 60% 80% at 80% 80%, rgba(80,0,180,0.3) 0%, transparent 60%),
     radial-gradient(ellipse 70% 50% at 60% 30%, rgba(0,180,160,0.15) 0%, transparent 50%);
-  animation: bg-shift 12s ease-in-out infinite alternate;
+  /* bg-shift animation removed — continuous full-screen transform is too expensive on mobile */
   pointer-events: none;
 }
 @keyframes bg-shift {
@@ -171,6 +171,7 @@ body::before {
   -webkit-overflow-scrolling: touch;
   opacity: 0; pointer-events: none;
   transform: translateY(8px);
+  will-change: opacity, transform;
   transition: opacity 0.22s ease, transform 0.22s ease;
 }
 .page.active { opacity: 1; pointer-events: auto; transform: translateY(0); }
@@ -924,7 +925,7 @@ input::placeholder, textarea::placeholder { color: var(--text3); }
 .lg-orb {
   position: absolute;
   border-radius: 50%;
-  filter: blur(60px);
+  filter: blur(30px);
   pointer-events: none;
   animation: orb-drift 14s ease-in-out infinite alternate;
 }
@@ -1080,8 +1081,8 @@ input::placeholder, textarea::placeholder { color: var(--text3); }
 
   /* Ultra-transparent liquid glass */
   background: rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(60px) saturate(180%) brightness(1.15);
-  -webkit-backdrop-filter: blur(60px) saturate(180%) brightness(1.15);
+  backdrop-filter: blur(30px) saturate(180%) brightness(1.15);
+  -webkit-backdrop-filter: blur(30px) saturate(180%) brightness(1.15);
 
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 28px;
@@ -1102,6 +1103,7 @@ input::placeholder, textarea::placeholder { color: var(--text3); }
     opacity   0.25s ease;
 }
 #lg-panel.open {
+  will-change: transform, opacity;
   transform: translate(-50%, -50%) scale(1);
   opacity: 1;
   pointer-events: auto;
@@ -1203,6 +1205,8 @@ html {
 }
 
 body {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
   background:
     radial-gradient(circle at 10% 0%, rgba(79,216,255,0.18), transparent 32%),
     radial-gradient(circle at 100% 80%, rgba(183,156,255,0.14), transparent 34%),
