@@ -1253,9 +1253,24 @@ async function init() {
   document.getElementById('lg-panel-backdrop').addEventListener('click', closePanel);
   document.getElementById('setup2FAModalBtn').addEventListener('click', async () => {
     document.getElementById('setupModal').classList.add('hidden');
-    // Enroll TOTP factor
+
+    // Check for existing factors — unenroll any incomplete (unverified) ones
+    const { data: factorsData } = await sb.auth.mfa.listFactors();
+    const existing = factorsData?.totp || [];
+    const verified = existing.find(f => f.status === 'verified');
+    if (verified) {
+      showToast('✓ Two-factor authentication is already active');
+      document.getElementById('setupModal').classList.remove('hidden');
+      return;
+    }
+    // Remove any unverified/stale factors before enrolling fresh
+    for (const f of existing) {
+      if (f.status !== 'verified') await sb.auth.mfa.unenroll({ factorId: f.id });
+    }
+
+    // Enroll fresh TOTP factor
     const { data, error } = await sb.auth.mfa.enroll({ factorType: 'totp', issuer: 'AssetTrack' });
-    if (error) { showToast('2FA setup failed: ' + error.message); return; }
+    if (error) { showToast('2FA setup failed: ' + error.message); document.getElementById('setupModal').classList.remove('hidden'); return; }
     window._enrollFactorId = data.id;
     // Show QR code
     const qrContainer = document.getElementById('qrCodeContainer');
