@@ -611,7 +611,7 @@ let _wzScanTimer = null;
 
 function openWizard(skipScan = false) {
   // Reset state
-  Object.assign(wz, { barcode:'', name:'', location:'', category:'', keywords:[], qty:1, minstock:0, supplier:'', notes:'', photo:'' });
+  Object.assign(wz, { barcode:'', name:'', location:'', category:'', keywords:[], qty:1, minstock:0, supplier:'', notes:'', photo:'', step:0 });
   document.getElementById('wizardModal').classList.remove('hidden');
 
   if (skipScan) {
@@ -632,6 +632,9 @@ function closeWizard() {
 }
 
 function wzGoTo(step) {
+  wz.step = step;
+  // Always stop the mini scanner when moving past scan step
+  if (step > 0) { clearTimeout(_wzScanTimer); stopScan('mini'); }
   document.querySelectorAll('.wizard-step').forEach((el, i) => {
     el.classList.toggle('hidden', i !== step);
   });
@@ -804,6 +807,8 @@ function initWizard() {
 
 // Called by onScanResult when mode === 'mini' (wizard scan step)
 function handleWizardScan(code) {
+  // Guard: only process scan results when on step 0 (scan step)
+  if (wz.step !== 0) return;
   wz.barcode = code;
   const badge = document.getElementById('wz-barcode-badge');
   if (badge) badge.textContent = `Barcode: ${code}`;
@@ -984,7 +989,10 @@ async function init() {
   document.getElementById('goForgot').addEventListener('click',   () => showView('viewForgot'));
   document.getElementById('forgotBack').addEventListener('click', () => showView('viewSignIn'));
   document.getElementById('tfa2Back').addEventListener('click',   () => showView('viewSignIn'));
-  document.getElementById('setup2FABack').addEventListener('click',() => showView('viewSignIn'));
+  document.getElementById('setup2FABack').addEventListener('click', async () => {
+    if (state.user) { await showApp(state.user); }
+    else { showView('viewSignIn'); }
+  });
 
   // Show/hide password toggles
   function togglePw(inputId, btnId) {
@@ -1157,7 +1165,8 @@ async function init() {
     });
     if (error) { err.textContent = error.message; err.classList.remove('hidden'); return; }
     showToast('✓ Two-factor authentication enabled');
-    document.getElementById('setupModal').classList.add('hidden');
+    // Return user to app (auth screen was shown to display QR/verify flow)
+    if (state.user) await showApp(state.user);
   });
 
   // Check if already logged in (e.g. OAuth redirect back)
