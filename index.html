@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="icon.png" />
   <link rel="manifest" href="manifest.json" />
   <title>AssetTrack</title>
-  <link rel="stylesheet" href="style.css?v=3" />
+  <link rel="stylesheet" href="style.css?v=4" />
   <style>
     /* Critical override: panel must be fixed, not relative */
     #lg-panel { position: fixed !important; }
@@ -494,6 +494,10 @@
           <p style="font-size:11px;color:var(--text3);margin-top:4px">This name appears on your home screen</p>
         </div>
         <p class="setup-info">Your inventory is stored securely in Supabase and syncs across all your devices automatically.</p>
+        <button class="btn-accent full" id="masterQRBtn" style="margin-bottom:8px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:8px"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3M17 14v3h3M14 17h3"/></svg>
+          Generate Master Borrow QR
+        </button>
         <button class="btn-accent full" id="setup2FAModalBtn" style="margin-bottom:8px">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:8px"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
           Set Up Two-Factor Auth
@@ -519,6 +523,103 @@
 
   <!-- TOAST -->
   <div id="toast" class="toast hidden"></div>
+
+
+  <!-- ═══════════════════════════════════════════════════════════
+       GUEST MODE SCREEN  (shown instead of app when ?guest=ID)
+  ═══════════════════════════════════════════════════════════ -->
+  <div id="guestScreen" class="hidden">
+
+    <!-- STEP 1: Name entry -->
+    <div id="guestNameScreen" class="guest-name-wrap">
+      <div class="guest-logo">
+        <svg width="36" height="36" viewBox="0 0 56 56" fill="none">
+          <path d="M14 20h4v16h-4zM20 16h4v20h-4zM26 22h4v14h-4zM32 18h4v18h-4zM38 20h4v16h-4z" fill="#00e5ff"/>
+        </svg>
+        <span>AssetTrack</span>
+      </div>
+      <div class="guest-name-card">
+        <div class="guest-name-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </div>
+        <h2 class="guest-title">Borrow an Item</h2>
+        <p class="guest-sub" id="guestAdminLabel">Enter your name to continue</p>
+        <div class="guest-field">
+          <input type="text" id="guestFirst" placeholder="First name" class="guest-input" autocomplete="given-name" />
+        </div>
+        <div class="guest-field">
+          <input type="text" id="guestLast" placeholder="Last name" class="guest-input" autocomplete="family-name" />
+        </div>
+        <div id="guestNameError" class="auth-error hidden"></div>
+        <button class="btn-primary full" id="guestContinueBtn" style="margin-top:8px">
+          <span id="guestContinueText">Continue</span>
+          <div class="auth-spinner hidden" id="guestContinueSpinner"></div>
+        </button>
+      </div>
+    </div>
+
+    <!-- STEP 2: Borrow / Return screen -->
+    <div id="guestBorrowScreen" class="hidden">
+      <!-- Header -->
+      <div class="guest-header">
+        <div class="guest-header-logo">
+          <svg width="20" height="20" viewBox="0 0 56 56" fill="none">
+            <path d="M14 20h4v16h-4zM20 16h4v20h-4zM26 22h4v14h-4zM32 18h4v18h-4zM38 20h4v16h-4z" fill="#00e5ff"/>
+          </svg>
+          <span>AssetTrack</span>
+        </div>
+        <div class="guest-header-user">
+          <span class="guest-mode-badge">Guest</span>
+          <span id="guestNameDisplay" class="guest-username"></span>
+        </div>
+      </div>
+
+      <!-- Search + Scan row -->
+      <div class="guest-search-bar">
+        <div class="guest-search">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input type="text" id="guestSearchInput" placeholder="Search items…" class="guest-search-input" oninput="guestSearch(this.value)" />
+        </div>
+        <button class="guest-scan-btn" id="guestScanToggle" title="Scan barcode">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="8" x2="4" y2="16"/><line x1="8" y1="6" x2="8" y2="18"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="16" y1="6" x2="16" y2="18"/><line x1="20" y1="8" x2="20" y2="16"/></svg>
+        </button>
+      </div>
+
+      <!-- Mini scanner (hidden until scan btn tapped) -->
+      <div id="guestScanRegionWrap" class="hidden" style="padding:0 16px 8px">
+        <div id="guestScanRegion" style="width:100%;border-radius:var(--radius);overflow:hidden"></div>
+        <button class="btn-ghost sm" id="guestScanCancel" style="width:100%;margin-top:6px">Cancel Scan</button>
+      </div>
+
+      <!-- Items list -->
+      <div class="guest-content">
+        <h3 class="guest-section-title">Available Items</h3>
+        <div id="guestItemList" class="guest-item-list"></div>
+
+        <!-- Active borrows by this guest -->
+        <div id="guestActiveBorrows"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════
+       MASTER QR MODAL  (admin generates borrow QR)
+  ═══════════════════════════════════════════════════════ -->
+  <div id="masterQRModal" class="modal hidden">
+    <div class="modal-backdrop" id="masterQRBackdrop"></div>
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="form-wrap" style="text-align:center">
+        <h2 style="text-align:left">Master Borrow QR</h2>
+        <p style="font-size:13px;color:var(--text2);text-align:left;margin-bottom:16px">
+          Share this QR code with users. When scanned, it opens a borrow screen for <strong>your inventory</strong> — no sign-up needed. Users can borrow and return items only.
+        </p>
+        <div id="masterQRCanvas" style="background:#fff;border-radius:12px;padding:16px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px"></div>
+        <p id="masterQRUrl" style="font-size:10px;color:var(--text3);word-break:break-all;font-family:var(--mono);text-align:left;margin-bottom:16px"></p>
+        <button class="btn-ghost full" id="masterQRClose">Close</button>
+      </div>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>

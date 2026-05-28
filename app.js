@@ -977,6 +977,14 @@ async function init() {
   document.getElementById('splash').classList.add('fade-out');
   setTimeout(() => document.getElementById('splash').style.display = 'none', 400);
 
+  // ── GUEST MODE CHECK ─────────────────────────
+  const _urlParams = new URLSearchParams(window.location.search);
+  const _guestId   = _urlParams.get('guest');
+  if (_guestId) {
+    await initGuestMode(_guestId);
+    return; // Skip all admin auth logic
+  }
+
   // ── AUTH VIEWS ──────────────────────────────
   function showView(id) {
     document.querySelectorAll('.auth-view').forEach(v => v.classList.add('hidden'));
@@ -1242,6 +1250,16 @@ async function init() {
     document.getElementById('itemModal').classList.add('hidden');
   });
   document.getElementById('setupBtn').addEventListener('click', openSetup);
+  document.getElementById('masterQRBtn').addEventListener('click', () => {
+    document.getElementById('setupModal').classList.add('hidden');
+    showMasterQR();
+  });
+  document.getElementById('masterQRClose').addEventListener('click', () => {
+    document.getElementById('masterQRModal').classList.add('hidden');
+  });
+  document.getElementById('masterQRBackdrop').addEventListener('click', () => {
+    document.getElementById('masterQRModal').classList.add('hidden');
+  });
   document.getElementById('setupBackdrop').addEventListener('click', () => {
     document.getElementById('setupModal').classList.add('hidden');
   });
@@ -1289,6 +1307,370 @@ async function init() {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
+}
+
+
+// ══════════════════════════════════════════════════════════════
+//  GUEST MODE  — borrow/return without admin sign-up
+//
+//  HOW IT WORKS
+//  1. Admin generates Master QR (links to ?guest=ADMIN_USER_ID)
+//  2. Guest scans QR → app opens in guest mode
+//  3. Guest enters first + last name
+//  4. Guest browrows/returns items from admin's inventory
+//
+//  REQUIRED SUPABASE SQL  (run once in Supabase SQL Editor):
+//  ─────────────────────────────────────────────────────────
+//  -- Allow any authenticated user (incl. anon) to read items
+//  create policy "Guest read items"
+//    on items for select to anon using (true);
+//
+//  -- Allow anon to insert borrows (guest borrows)
+//  create policy "Guest insert borrows"
+//    on borrows for insert to anon with check (true);
+//
+//  -- Allow anon to update borrows (guest returns)
+//  create policy "Guest update borrows"
+//    on borrows for update to anon
+//    using (returned = false) with check (returned = true);
+//
+//  Also enable "Anonymous sign-ins" in Supabase Auth → Providers
+//  OR just use the anon key without signing in (simpler).
+// ══════════════════════════════════════════════════════════════
+
+const guestState = {
+  adminId:   null,
+  adminName: null,
+  guestName: null,
+  items:     [],
+  allBorrows: [],  // all active borrows for admin's items
+  myBorrows:  [],  // active borrows by this guest only
+};
+
+// ── Entry point: called from init() when ?guest= param present ──
+async function initGuestMode(adminId) {
+  guestState.adminId = adminId;
+
+  // Hide all other screens, show guest screen + name entry
+  document.getElementById('splash').style.display = 'none';
+  document.getElementById('authScreen').classList.add('hidden');
+  document.getElementById('app').classList.add('hidden');
+  const gs = document.getElementById('guestScreen');
+  gs.classList.remove('hidden');
+  document.getElementById('guestNameScreen').style.display = '';
+  document.getElementById('guestBorrowScreen').classList.add('hidden');
+
+  // Try to show admin's display name
+  try {
+    const { data } = await sb
+      .from('profiles')
+      .select('display_name')
+      .eq('id', adminId)
+      .single();
+    if (data?.display_name) {
+      guestState.adminName = data.display_name;
+      document.getElementById('guestAdminLabel').textContent =
+        'Borrowing from ' + data.display_name + '\u2019s inventory';
+    }
+  } catch (_) {}
+
+  // Wire up Continue button
+  document.getElementById('guestContinueBtn').addEventListener('click', guestContinue);
+  document.getElementById('guestFirst').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('guestLast').focus();
+  });
+  document.getElementById('guestLast').addEventListener('keydown', e => {
+    if (e.key === 'Enter') guestContinue();
+  });
+
+  // Wire up scan toggle
+  document.getElementById('guestScanToggle').addEventListener('click', guestToggleScan);
+  document.getElementById('guestScanCancel').addEventListener('click', guestStopScan);
+}
+
+async function guestContinue() {
+  const first = document.getElementById('guestFirst').value.trim();
+  const last  = document.getElementById('guestLast').value.trim();
+  const err   = document.getElementById('guestNameError');
+  err.classList.add('hidden');
+
+  if (!first) { err.textContent = 'Please enter your first name'; err.classList.remove('hidden'); return; }
+  if (!last)  { err.textContent = 'Please enter your last name';  err.classList.remove('hidden'); return; }
+
+  guestState.guestName = first + ' ' + last;
+
+  // Show loading state
+  const btn = document.getElementById('guestContinueBtn');
+  const txt = document.getElementById('guestContinueText');
+  const spin = document.getElementById('guestContinueSpinner');
+  btn.disabled = true;
+  txt.textContent = 'Loading\u2026';
+  spin.classList.remove('hidden');
+
+  await guestLoadData();
+
+  btn.disabled = false;
+  txt.textContent = 'Continue';
+  spin.classList.add('hidden');
+
+  // Transition to borrow screen
+  document.getElementById('guestNameScreen').style.display = 'none';
+  const bs = document.getElementById('guestBorrowScreen');
+  bs.classList.remove('hidden');
+  document.getElementById('guestNameDisplay').textContent = guestState.guestName;
+
+  guestRenderItems();
+  guestRenderBorrows();
+}
+
+async function guestLoadData() {
+  // Load admin's items
+  const { data: items, error: ie } = await sb
+    .from('items')
+    .select('*')
+    .eq('user_id', guestState.adminId)
+    .order('name', { ascending: true });
+
+  if (ie) {
+    showToast('Could not load items. Ask your admin to set up guest access.');
+    guestState.items = [];
+  } else {
+    guestState.items = items || [];
+  }
+
+  // Load all active borrows for admin's items
+  const { data: borrows } = await sb
+    .from('borrows')
+    .select('*')
+    .eq('user_id', guestState.adminId)
+    .eq('returned', false);
+
+  const allB = borrows || [];
+  guestState.allBorrows = allB;
+  guestState.myBorrows  = allB.filter(b => b.borrower === guestState.guestName);
+}
+
+// ── Search ────────────────────────────────────────────────────
+window.guestSearch = debounce(function(val) {
+  guestRenderItems(val);
+}, 150);
+
+// ── Render items list ─────────────────────────────────────────
+function guestRenderItems(query = '') {
+  const list = document.getElementById('guestItemList');
+  let items = guestState.items;
+
+  if (query) {
+    const q = query.toLowerCase();
+    items = items.filter(i =>
+      i.name.toLowerCase().includes(q) ||
+      (i.category  || '').toLowerCase().includes(q) ||
+      (i.location  || '').toLowerCase().includes(q) ||
+      (i.barcode   || '').toLowerCase().includes(q) ||
+      (i.keywords  || '').toLowerCase().includes(q)
+    );
+  }
+
+  if (items.length === 0) {
+    list.innerHTML = '<div class="guest-empty">' +
+      (guestState.items.length === 0
+        ? '<p>No items available.<br/><small>Ask your admin to add items or enable guest access.</small></p>'
+        : '<p>No items match your search.</p>') +
+      '</div>';
+    return;
+  }
+
+  list.innerHTML = items.map(item => {
+    const myBorrow = guestState.myBorrows.find(b => b.item_id === item.id);
+    const otherBorrow = !myBorrow && guestState.allBorrows.find(b => b.item_id === item.id);
+    const meta = [item.location, item.category].filter(Boolean).join(' · ');
+
+    let actionHtml;
+    if (myBorrow) {
+      actionHtml = `<button class="guest-action-btn return" onclick="guestReturn('${myBorrow.id}','${esc(item.name)}')">Return</button>`;
+    } else if (otherBorrow) {
+      actionHtml = `<div class="guest-on-loan-chip">On Loan</div>`;
+    } else {
+      actionHtml = `<button class="guest-action-btn borrow" onclick="guestBorrow('${item.id}')">Borrow</button>`;
+    }
+
+    return `<div class="guest-item-card">
+      <div class="guest-item-info">
+        <div class="guest-item-name">${esc(item.name)}</div>
+        ${meta ? `<div class="guest-item-meta">${esc(meta)}</div>` : ''}
+      </div>
+      <div class="guest-item-actions">${actionHtml}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── Render active borrows by this guest ───────────────────────
+function guestRenderBorrows() {
+  const el = document.getElementById('guestActiveBorrows');
+  const mb = guestState.myBorrows;
+
+  if (mb.length === 0) {
+    el.innerHTML = '';
+    return;
+  }
+
+  el.innerHTML = `<h3 class="guest-section-title" style="margin-top:16px">Your Active Borrows</h3>
+    <div class="guest-borrows-section">` +
+    mb.map(b => `<div class="guest-borrow-card">
+      <div>
+        <div class="guest-borrow-item">${esc(b.item_name)}</div>
+        <div class="guest-borrow-meta">Since ${esc(b.borrow_date || '')}</div>
+      </div>
+      <button class="guest-action-btn return" onclick="guestReturn('${b.id}','${esc(b.item_name)}')">Return</button>
+    </div>`).join('') +
+    '</div>';
+}
+
+// ── Borrow an item ────────────────────────────────────────────
+window.guestBorrow = async function(itemId) {
+  const item = guestState.items.find(i => i.id === itemId);
+  if (!item) return;
+
+  const borrow = {
+    id:          'BRW-' + Date.now(),
+    user_id:     guestState.adminId,
+    item_id:     item.id,
+    item_name:   item.name,
+    borrower:    guestState.guestName,
+    borrow_date: new Date().toLocaleDateString('en-AU'),
+    due_date:    null,
+    returned:    false,
+  };
+
+  const { error } = await sb.from('borrows').insert(borrow);
+  if (error) {
+    showToast('Could not record borrow: ' + error.message);
+    return;
+  }
+
+  guestState.allBorrows.push(borrow);
+  guestState.myBorrows.push(borrow);
+  showToast('\u2713 Borrowed: ' + item.name);
+
+  const q = document.getElementById('guestSearchInput').value;
+  guestRenderItems(q);
+  guestRenderBorrows();
+};
+
+// ── Return an item ────────────────────────────────────────────
+window.guestReturn = async function(borrowId, itemName) {
+  const today = new Date().toLocaleDateString('en-AU');
+  const { error } = await sb
+    .from('borrows')
+    .update({ returned: true, return_date: today })
+    .eq('id', borrowId);
+
+  if (error) {
+    showToast('Could not record return: ' + error.message);
+    return;
+  }
+
+  guestState.allBorrows = guestState.allBorrows.filter(b => b.id !== borrowId);
+  guestState.myBorrows  = guestState.myBorrows.filter(b => b.id !== borrowId);
+  showToast('\u2713 Returned: ' + itemName);
+
+  const q = document.getElementById('guestSearchInput').value;
+  guestRenderItems(q);
+  guestRenderBorrows();
+};
+
+// ── Barcode scan in guest mode ────────────────────────────────
+let _guestScanner = null;
+
+async function guestToggleScan() {
+  const wrap = document.getElementById('guestScanRegionWrap');
+  if (!wrap.classList.contains('hidden')) {
+    guestStopScan();
+    return;
+  }
+  wrap.classList.remove('hidden');
+  document.getElementById('guestScanToggle').style.color = 'var(--accent)';
+
+  if (!_guestScanner) {
+    _guestScanner = new Html5Qrcode('guestScanRegion');
+  }
+  try {
+    await _guestScanner.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 250, height: 150 } },
+      (code) => {
+        guestHandleScan(code);
+      },
+      () => {}
+    );
+  } catch (e) {
+    showToast('Camera unavailable');
+    wrap.classList.add('hidden');
+  }
+}
+
+async function guestStopScan() {
+  const wrap = document.getElementById('guestScanRegionWrap');
+  wrap.classList.add('hidden');
+  document.getElementById('guestScanToggle').style.color = '';
+  if (_guestScanner) {
+    try {
+      if (_guestScanner.isScanning) await _guestScanner.stop();
+      _guestScanner.clear();
+    } catch (_) {}
+    _guestScanner = null;
+  }
+}
+
+function guestHandleScan(code) {
+  guestStopScan();
+  // Find item by barcode
+  const item = guestState.items.find(i =>
+    i.barcode === code || i.id === code
+  );
+  if (!item) {
+    showToast('Item not found: ' + code);
+    return;
+  }
+  // Scroll to item + highlight it by populating search
+  const inp = document.getElementById('guestSearchInput');
+  inp.value = item.name;
+  guestRenderItems(item.name);
+  showToast('Found: ' + item.name);
+}
+
+// ══════════════════════════════════════════════════════════════
+//  MASTER QR CODE  — admin generates their borrow link QR
+// ══════════════════════════════════════════════════════════════
+
+async function showMasterQR() {
+  // Load QR library lazily
+  if (typeof QRCode === 'undefined') {
+    try {
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js');
+    } catch (_) {
+      showToast('Could not load QR library');
+      return;
+    }
+  }
+
+  const base = window.location.origin + window.location.pathname;
+  const url  = base + '?guest=' + state.user.id;
+
+  const container = document.getElementById('masterQRCanvas');
+  container.innerHTML = '';
+
+  new QRCode(container, {
+    text:          url,
+    width:         200,
+    height:        200,
+    colorDark:     '#000000',
+    colorLight:    '#ffffff',
+    correctLevel:  QRCode.CorrectLevel.M,
+  });
+
+  document.getElementById('masterQRUrl').textContent = url;
+  document.getElementById('masterQRModal').classList.remove('hidden');
 }
 
 document.addEventListener('DOMContentLoaded', init);

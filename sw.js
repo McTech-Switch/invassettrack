@@ -1,6 +1,6 @@
 // AssetTrack Service Worker — enables offline use after first load
 
-const CACHE = 'assettrack-v2';
+const CACHE = 'assettrack-v3';
 const ASSETS = [
   './',
   './index.html',
