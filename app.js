@@ -1346,10 +1346,20 @@ const guestState = {
   allBorrows: [],  // all active borrows for admin's items
   myBorrows:  [],  // active borrows by this guest only
 };
+// Separate Supabase client for guest mode — no session persistence so it
+// won't hang trying to refresh the admin's stored auth token.
+let guestSb = null;
 
 // ── Entry point: called from init() when ?guest= param present ──
 async function initGuestMode(adminId) {
   guestState.adminId = adminId;
+
+  // Create a fresh Supabase client that ignores any stored admin session.
+  // Without persistSession:false the SDK tries to refresh the admin token
+  // from localStorage and hangs indefinitely.
+  guestSb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+  });
 
   // Hide all other screens, show guest screen + name entry
   document.getElementById('splash').style.display = 'none';
@@ -1362,7 +1372,7 @@ async function initGuestMode(adminId) {
 
   // Try to show admin's display name
   try {
-    const { data } = await sb
+    const { data } = await guestSb
       .from('profiles')
       .select('display_name')
       .eq('id', adminId)
@@ -1425,7 +1435,7 @@ async function guestContinue() {
 
 async function guestLoadData() {
   // Load admin's items
-  const { data: items, error: ie } = await sb
+  const { data: items, error: ie } = await guestSb
     .from('items')
     .select('*')
     .eq('user_id', guestState.adminId)
@@ -1439,7 +1449,7 @@ async function guestLoadData() {
   }
 
   // Load all active borrows for admin's items
-  const { data: borrows } = await sb
+  const { data: borrows } = await guestSb
     .from('borrows')
     .select('*')
     .eq('user_id', guestState.adminId)
@@ -1542,7 +1552,7 @@ window.guestBorrow = async function(itemId) {
     returned:    false,
   };
 
-  const { error } = await sb.from('borrows').insert(borrow);
+  const { error } = await guestSb.from('borrows').insert(borrow);
   if (error) {
     showToast('Could not record borrow: ' + error.message);
     return;
@@ -1560,7 +1570,7 @@ window.guestBorrow = async function(itemId) {
 // ── Return an item ────────────────────────────────────────────
 window.guestReturn = async function(borrowId, itemName) {
   const today = new Date().toLocaleDateString('en-AU');
-  const { error } = await sb
+  const { error } = await guestSb
     .from('borrows')
     .update({ returned: true, return_date: today })
     .eq('id', borrowId);
